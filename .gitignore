@@ -1,0 +1,10 @@
+**/.gradle/
+**/build/
+**/local.properties
+**/.idea/
+artifacts/
+diagnostic-exports/
+*.iml
+!docs/
+!docs/*.md
+**/__pycache__/

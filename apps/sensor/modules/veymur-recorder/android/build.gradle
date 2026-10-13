@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.veymur.recorder'
+version = '0.0.1'
+
+android {
+  namespace 'com.veymur.recorder'
+  defaultConfig {
+    minSdkVersion 33
+    versionCode 1
+    versionName '0.0.1'
+  }
+}
+
+// Retained from the validated stage 2 stack for the upcoming Kotlin core migration.
+dependencies {
+  implementation 'com.github.polarofficial:polar-ble-sdk:8.4.0'
+  implementation 'net.zetetic:sqlcipher-android:4.6.1@aar'
+  implementation 'androidx.sqlite:sqlite:2.4.0'
+}

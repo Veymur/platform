@@ -29,7 +29,7 @@ React Native/Expo, MapLibre, and iOS are not included in this diagnostic APK. Fu
 
 ## Android migration dependency experiment — October 13, 2026
 
-The selected bridge is a **local Expo Module**, tested in the separate [sensor-bridge-probe](../apps/sensor-bridge-probe/README.md). It uses an Expo development client, prebuild/CNG and the New Architecture. A second Turbo Native Module adapter was not created. Version requirements below are sourced from official documentation; actual build/runtime evidence is recorded separately in [the experiment report](react-native-bridge-validation.ru.md).
+The selected bridge is a **local Expo Module**, tested in the separate [sensor-bridge-probe](../apps/sensor-bridge-probe/README.md). It uses an Expo development client, prebuild/CNG and the New Architecture. A second Turbo Native Module adapter was not created. Version requirements below are sourced from official documentation; actual build/runtime evidence is recorded separately in [the experiment report](stage-0/react-native-bridge-validation.ru.md).
 
 | Component | Exact selected version / requirement | Source checked October 13, 2026 |
 |---|---|---|
@@ -56,6 +56,12 @@ Do not copy the Kotlin prototype's JDK bytecode-21 setting into the RN host with
 SQLCipher 4.6.1 is the modern `sqlcipher-android` package, not the retired `android-database-sqlcipher`. Zetetic documents 16 KB page support beginning with 4.6.1. APK/ELF checks and x86_64 library loading do not replace a real 16 KB runtime test. Polar is an Android bytecode library; its presence/version API does not demonstrate BLE functionality or behavior on every CPU/device.
 
 No new library versions are pinned for MapLibre, cloud/web, server, Swift or iOS SQLCipher. Those integrations remain outside this experiment. npm audit findings and native toolchain warnings are recorded in the experiment report; this is not a release-ready dependency audit.
+
+## Minimal RN application — migration stage 3
+
+Migration stage 3 now provides [apps/sensor](../apps/sensor/README.md) with the same native stack and the separate applicationId `com.veymur.sensor`. Main and clean-checkout Android builds for arm64-v8a/x86_64 both passed; both installed APKs returned the `VeymurRecorder.getModuleInfo` DTO through JS on API 34. Recorder implementation remains false, no BLE/service/database calls occur in this handshake, and iOS explicitly rejects it. See the [stage 3 report](stage-0/react-native-minimal-app-validation.ru.md).
+
+New lint-only dependencies, checked October 13, 2026: ESLint 10.12.0, @eslint/js 10.0.1, typescript-eslint 8.71.2. [ESLint's Node requirements](https://eslint.org/docs/latest/use/getting-started) and [typescript-eslint dependency ranges](https://typescript-eslint.io/users/dependency-versions/) plus registry peers were checked before pinning. Node 22.22.2 / TypeScript 6.0.3 are supported; typecheck and ESLint passed in both checkouts. npm audit findings remain at 22 (7 moderate, 15 high) in the inherited tooling graph. These build results do not close physical-device, recording or iOS compatibility checks.
 
 ## Foreground recording requirements for target SDK 36
 

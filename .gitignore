@@ -18,4 +18,5 @@ diagnostic-exports/
 
 !/docs/
 !/docs/**
-/docs/stage-0
+/docs/stage-0/
+/docs/migration-baseline/

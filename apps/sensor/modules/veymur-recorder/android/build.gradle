@@ -15,9 +15,11 @@ android {
   }
 }
 
-// Retained from the validated stage 2 stack for the upcoming Kotlin core migration.
 dependencies {
   implementation 'com.github.polarofficial:polar-ble-sdk:8.4.0'
   implementation 'net.zetetic:sqlcipher-android:4.6.1@aar'
   implementation 'androidx.sqlite:sqlite:2.4.0'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+  implementation 'androidx.core:core-ktx:1.16.0'
+  testImplementation 'junit:junit:4.13.2'
 }

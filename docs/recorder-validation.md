@@ -2,6 +2,16 @@
 
 Status: the user has installed the Android prototype; hardware exports from Galaxy A23 / Android 14 confirm local recording and completion, including HR/GPS persistence during a screen-off interval longer than 10 minutes, continued GPS during sensor loss, HR resumption after reconnection, preservation of an interrupted HR session after force stop/relaunch, HR pause/resume with paused time excluded, and completed HR recording/export under tester-reported offline conditions, and HR-only recording with phone location disabled before startup. HR receipt gaps are documented below. The full hardware scenario matrix has not yet been completed. Stage 0 remains incomplete. iOS has not been tested.
 
+## Kotlin Core in RN Host — Migration Stage 4, October 13, 2026
+
+RecordingClock, Journal and RecorderService now reside in `apps/sensor/modules/veymur-recorder/android/src/main/java/com/veymur/recorder/core`. Production writes remain on the native service worker; no core file imports React/Expo. Source differences are limited to the package and notification launcher Intent. SQL schema/user_version=1 and ZIP schema_version=1 are unchanged. Core identity `stage0-777a33b-host-v1` is embedded in APK manifest metadata. Private service/provider/permissions and backup rules are reproduced through module resources/config plugin.
+
+Main and clean-checkout builds passed for arm64-v8a/x86_64. 2 clock unit tests, 6 real-host instrumentation tests, 4 wrapper tests and 4 existing Python analyzer tests passed. Native module lint: 0 errors, 6 warnings. Each APK's host tests verified encrypted storage/Keystore reopening, completed/interrupted recovery, synthetic HR/GPS/pause/finish, rollback after SQL failure, FileProvider scope and manifest/backup protection. Completed and interrupted synthetic ZIPs from both APKs passed the unchanged independent analyzer. Synthetic time uses a controlled clock; this does not establish real sensor or service-callback behavior.
+
+Gradle connected-test cleanup uninstalled the target app, so test APKs were installed and run with am instrument to retain/pull synthetic ZIPs. Use a dedicated emulator for this procedure. APKs, commands, hashes, exact test scopes and inherited limitations: [stage 4 report](stage-0/react-native-core-migration-validation.ru.md), [app instructions](../apps/sensor/README.md).
+
+JS recording commands/snapshots remain unavailable until migration stage 5; the existing screen still reports recording unavailable. No new phone/sensor/foreground/locking/process-death or iOS validation is claimed. Stage 0 stays incomplete. Next: migration stage 5, implement commands and commit acknowledgments at the native boundary.
+
 ## Minimal React Native Host — Migration Stage 3, October 13, 2026
 
 [apps/sensor](../apps/sensor/README.md) now contains an Android development build and a local Expo Module `veymur-recorder`, using the stage 2 versions. Its separate applicationId is `com.veymur.sensor`. Kotlin returns a typed `getModuleInfo` handshake with recorderImplemented=false; no BLE, recorder database or foreground service is started. The screen explicitly states that recording is unavailable. iOS has an unsupported-platform message, and its wrapper rejects calls before loading Android code.

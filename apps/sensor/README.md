@@ -1,6 +1,6 @@
 # Veymur Sensor — minimal React Native app
 
-Migration stage 3 creates the Android host and a local Expo Module. The development screen verifies a typed JS → Kotlin response. **Sensor connection and recording are not implemented yet.** The module has no `start` API, does not open the user database and does not start a service. iOS has an explicit unsupported-platform message and rejects module calls before loading Android code.
+Migration stages 3–4 provide the Android host, a local Expo Module and the migrated Kotlin recording core. The development screen still verifies only a typed JS → Kotlin response: **recording commands are not exposed to JS yet**. `getModuleInfo` does not open a database or start the service; recorderImplemented=false describes this intermediate public API. iOS has an explicit unsupported-platform message and rejects module calls before loading Android code.
 
 The Stage 0 recorder and stage 2 dependency probe remain separately installed/testable:
 
@@ -98,6 +98,42 @@ Start with no generated host or build outputs. Inspect `node_modules/expo/androi
 
 ## Verification and scope
 
+### Native core — migration stage 4
+
+`modules/veymur-recorder/android/src/main/java/com/veymur/recorder/core/` contains `RecordingClock`, `Journal` and `RecorderService`. The service remains the production database writer: Polar/GPS callbacks enqueue work on its HandlerThread; JS is not involved in persistence. Core source imports no Expo/React APIs. Changes from the old core are limited to Kotlin package names and looking up the host launcher Intent instead of referring to the prototype MainActivity. Foreground types, notification channel, wake lock, stream handling and resource cleanup remain as in the baseline.
+
+Database tables, user_version=1, key wrapping and diagnostic ZIP schema_version=1 are unchanged; no schema migration or old-data import was introduced. Keystore aliases and filenames remain scoped to the new applicationId. Session finalization/recovery still use multiple SQL operations; error handling, checkpoints and callback loss-window limitations from the baseline require separate work.
+
+The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-host-v1`. ZIP metadata/CSV were not changed to add this identity.
+
+Run storage/clock checks on a **dedicated test emulator** with the environment above:
+
+```bash
+npm run prebuild:android
+npm run test:android:unit
+npm run test:android:device
+npm run lint:android
+```
+
+Clock JVM tests live in the local module's android/src/test. Host instrumentation source lives in `modules/veymur-recorder/tests/android/`; the config plugin copies it into generated `android/app/src/androidTest/java` and configures the runner/dependencies. This tests the actual `com.veymur.sensor` sandbox, not a library-only test app. Tests use separate instrumentation-prefixed databases/preferences, not the production journal. The tests do not bind/start RecorderService or connect a sensor.
+
+Verification on Android 14: 2 clock tests and 6 host instrumentation tests passed, covering SQLCipher header/Keystore reopen, completed/interrupted recovery, append rollback after injected SQL failure, synthetic HR/GPS with pause/resume/finish, ZIP readback, FileProvider scope, private service/permissions, core identity and backup protection. Synthetic active time uses a controlled clock; these tests do not validate real sensor callbacks, stream suppression on pause, lock-screen recording or abrupt process death. Native lint: 0 errors, 6 warnings.
+
+The observed Gradle connected-test cleanup uninstalls the target app and removes its files. Use a test emulator rather than an installation containing recordings. To retain synthetic ZIPs for independent analysis, install/run the already-built test APK directly after the Gradle run:
+
+```bash
+adb -s emulator-5554 install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 shell am instrument -w -r \
+  com.veymur.sensor.test/androidx.test.runner.AndroidJUnitRunner
+adb -s emulator-5554 pull /sdcard/Android/data/com.veymur.sensor/files/stage4-synthetic-completed.zip /tmp/stage4-completed.zip
+adb -s emulator-5554 pull /sdcard/Android/data/com.veymur.sensor/files/stage4-synthetic-interrupted.zip /tmp/stage4-interrupted.zip
+python3 ../sensor-stage0/scripts/analyze_export.py /tmp/stage4-completed.zip
+python3 ../sensor-stage0/scripts/analyze_export.py /tmp/stage4-interrupted.zip
+```
+
+Both ZIPs passed the unchanged Python analyzer and CRC checks. Full stage 4 commands, main/clean APK hashes, synthetic results and limits: [native core report](../../docs/stage-0/react-native-core-migration-validation.ru.md).
+
 Commands/results, APK identities and clean-checkout details are recorded in the [stage 3 report](../../docs/stage-0/react-native-minimal-app-validation.ru.md) and [recorder validation](../../docs/recorder-validation.md). Migration reports under `docs/stage-0/` and local APK/log artifacts are ignored by Git according to repository preferences.
 
-Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, BLE/GPS, foreground recording, Keystore recovery, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Next: migration stage 4, transfer the Kotlin core and its storage/clock tests.
+Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, BLE/GPS, foreground recording, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Keystore/storage recovery has emulator evidence only. Next: migration stage 5, implement commands, commit acknowledgments and recorder snapshots at the JS/native boundary.

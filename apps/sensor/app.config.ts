@@ -5,7 +5,7 @@ const config: ExpoConfig = {
   slug: 'veymur-sensor',
   version: '0.0.1',
   platforms: ['android'],
-  android: { package: 'com.veymur.sensor' },
+  android: { package: 'com.veymur.sensor', allowBackup: false },
   plugins: [
     'expo-dev-client',
     ['expo-build-properties', {

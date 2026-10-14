@@ -2,11 +2,34 @@ const {
   withDangerousMod,
   withGradleProperties,
   withProjectBuildGradle,
+  withAppBuildGradle,
+  withAndroidManifest,
 } = require("expo/config-plugins");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
 module.exports = (config) => {
+  config = withAndroidManifest(config, (config) => {
+    const application = config.modResults.manifest.application[0];
+    application.$['android:allowBackup'] = 'false';
+    application.$['android:dataExtractionRules'] = '@xml/veymur_recorder_data_extraction_rules';
+    return config;
+  });
+  config = withAppBuildGradle(config, (config) => {
+    const marker = '// @veymur-recorder instrumentation';
+    if (!config.modResults.contents.includes(marker)) {
+      config.modResults.contents += `\n${marker}\nandroid {
+  defaultConfig { testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner" }
+}
+dependencies {
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+  androidTestImplementation 'net.zetetic:sqlcipher-android:4.6.1@aar'
+  androidTestImplementation 'androidx.sqlite:sqlite:2.4.0'
+}\n`;
+    }
+    return config;
+  });
   config = withProjectBuildGradle(config, (config) => {
     const unversioned =
       "classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')";
@@ -40,6 +63,11 @@ module.exports = (config) => {
   return withDangerousMod(config, [
     "android",
     async (config) => {
+      // Host instrumentation, not the standalone library test APK: use the actual sensor sandbox.
+      const tests = path.resolve(__dirname, '../tests/android');
+      const target = path.join(config.modRequest.platformProjectRoot, 'app/src/androidTest/java');
+      await fs.mkdir(target, { recursive: true });
+      await fs.cp(tests, target, { recursive: true });
       const file = path.join(
         config.modRequest.platformProjectRoot,
         "gradle/wrapper/gradle-wrapper.properties",

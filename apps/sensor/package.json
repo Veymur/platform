@@ -16,6 +16,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "lint:android": "android/gradlew -p android :veymur-recorder:lintDebug",
+    "test:android:unit": "android/gradlew -p android :veymur-recorder:testDebugUnitTest",
+    "test:android:device": "android/gradlew -p android :app:connectedDebugAndroidTest",
     "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {

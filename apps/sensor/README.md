@@ -1,4 +1,4 @@
-# Veymur Sensor — minimal React Native app
+# Veymur Sensor — Android diagnostic recorder
 
 Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=3/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, start/pause/resume/confirmed finish, diagnostic ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder-bridge-contract.md).
 
@@ -63,13 +63,45 @@ adb -s emulator-5554 shell am start -W -a android.intent.action.VIEW \
 adb -s emulator-5554 logcat -d -s ReactNativeJS:I '*:S'
 ```
 
-The screen should show “Android native module connected” and “Recording is not available in this build.” The JS log must contain:
+The current screen is “Veymur · recording validation”: storage becomes ready, and a disconnected sensor shows “No current heart rate”. The typed handshake requires contractVersion=3/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
 
-```text
-RECORDER_MODULE_OK {"moduleName":"VeymurRecorder","platform":"android","contractVersion":1,"recorderImplemented":false}
+An incompatible native binary produces a rebuild/reinstall error. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, registration, permissions or plugin/config changes require prebuild and a new installation. JS reload updates only JS. This **debug development APK** uses Metro; it supports the JS reload scenarios. It is separate from the autonomous diagnostic variant below.
+
+## Autonomous diagnostic APK — embedded JS
+
+After installing dependencies and generating Android, run:
+
+```bash
+npm run build:android:offline
+npm run verify:android:offline
 ```
 
-An outdated/incompatible native response produces an error asking to rebuild/install the development binary. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, module registration, permissions or plugin/config changes require prebuild, a new APK and installation. JS reload updates only the JS code. This development APK loads its JS through Metro; it is not the offline recording build required by later stages.
+`build:android:offline` runs the **release Gradle variant** with NODE_ENV=production. Expo's generated `export:embed` task and Hermes compiler package `assets/index.android.bundle` inside the APK. Building requires dependency downloads/network access when caches are missing; “offline” describes app startup/runtime, not the build process. No running Metro, EAS account or backend is needed to launch this variant.
+
+Output: `android/app/build/outputs/apk/release/app-release.apk`. This is an **internal diagnostic APK signed with the Expo template debug key**, not a production-signed/store release. It keeps `com.veymur.sensor`, the native core, SQL/ZIP schema and database sandbox. Before replacing an existing installation, verify the signing certificate matches; a mismatch is a reason to preserve/export data and resolve signing, not uninstall the app automatically. Debug and autonomous variants cannot be installed side by side with this applicationId; the original Kotlin prototype remains separately installed.
+
+`verify:android:offline` uses Python 3, ANDROID_HOME/ANDROID_SDK_ROOT and the pinned Build Tools 36.0.0. It checks the APK ZIP CRC, non-empty bundle, native core/service/provider, applicationId, non-debuggable flag, API 33/36, both ABIs and cryptographic signature, and prints APK/bundle/certificate hashes. This is package inspection; actual offline startup is verified separately.
+
+Install/launch on the dedicated emulator (substitute an authorized phone's serial when doing hardware validation):
+
+```bash
+adb -s emulator-5554 install -r android/app/build/outputs/apk/release/app-release.apk
+adb -s emulator-5554 shell am start -W -n com.veymur.sensor/.MainActivity
+```
+
+For an emulator offline-start check: stop the Metro process started for this project, remove its ADB reverse with `adb -s emulator-5554 reverse --remove tcp:8081`, disable emulator Wi-Fi/mobile data, force-stop and launch through MainActivity. Verify the diagnostic screen, ready storage and native error handling; restore the prior emulator network state afterwards. Do not use force-stop/clear-data as a cleanup action on a phone with an active recording. Development tools and JS reload are unavailable in this autonomous variant, so reload tests use the development APK; offline/battery tests use this one.
+
+## Recording, export and interrupted recovery
+
+- Find Verity Sense, allow Bluetooth and select its device ID explicitly. Sensor connection is confirmed by the native status/ID, not command acceptance.
+- Enable Record phone route only when wanted. Denying precise location permits HR-only recording; unavailable location/provider at start also degrades to HR-only.
+- Start recording; optional notification denial does not block HR. Pause/resume use separate native commands. Finish requires confirmation and reports saved only after commit. A failed finish exposes retry saving and preserves its session ID.
+- Export last session creates a schema-1 diagnostic ZIP and opens Android sharing with a scoped read URI. The chooser is not proof a recipient saved the file. The ZIP can include precise coordinates; choose the destination deliberately.
+- After interrupted process termination, reopening the service marks the available unfinished portion interrupted and shows the recovered count. Export reads the latest available session. No continuity after force-stop/reboot, automatic stream resumption, old-prototype data import or full history UI is promised.
+
+Analyze an exported ZIP from the platform root with `python3 apps/sensor-stage0/scripts/analyze_export.py /path/to/export.zip`. Counts, pauses, HR/GPS gaps and receipt timestamps are diagnostic facts; no zero filling or medical interpretation is added.
+
+Current build identities, exact checks and open hardware criteria: [preliminary stage-8 report](../../docs/android-migration-delivery.md). Stage 7 is deferred by the user; stage 8 is not fully complete until the physical-device comparison is done.
 
 ## Source ownership and clean regeneration
 
@@ -91,10 +123,12 @@ npm run lint
 npm test
 npm run prebuild:android
 npm run build:android
+npm run build:android:offline
+npm run verify:android:offline
 npm run lint:android
 ```
 
-Start with no generated host or build outputs. Inspect `node_modules/expo/android/build/generated/expo/src/main/java/expo/modules/ExpoModulesPackageList.kt` for `com.veymur.recorder.RecorderModule`, the generated Gradle compiler pin, wrapper checksum and the APK min/target SDK. Install the regenerated APK and repeat the JS→Kotlin handshake. `prebuild --clean` is permitted only in the isolated test checkout after checking that it contains no unsaved native edits; do not use it over user changes in the working project.
+Start with no generated host or build outputs. Inspect `node_modules/expo/android/build/generated/expo/src/main/java/expo/modules/ExpoModulesPackageList.kt` for `com.veymur.recorder.RecorderModule`, the generated Gradle compiler pin, wrapper checksum and the APK min/target SDK. Install the regenerated debug APK and verify the current diagnostic screen/native-ready state. Install the regenerated autonomous APK and repeat the cold launch without Metro/network. `prebuild --clean` is permitted only in the isolated test checkout after checking that it contains no unsaved native edits; do not use it over user changes in the working project.
 
 ## Verification and scope
 

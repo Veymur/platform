@@ -16,6 +16,7 @@ class RecorderModule : Module() {
     private var context: Context? = null
     private var bound = false
     private var observing = false
+    private var hostVisible: Boolean? = null
     private var destroyed = false
     private val pending = mutableListOf<Pair<Promise, (RecorderService) -> Unit>>()
     private val listener: (Map<String, Any?>) -> Unit = { if (observing && !destroyed) runCatching { sendEvent("onSnapshot", it) }; Unit }
@@ -23,6 +24,8 @@ class RecorderModule : Module() {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             val connected = (binder as RecorderService.LocalBinder).service
             service = connected
+            val visible = hostVisible ?: appContext.currentActivity?.hasWindowFocus()?.takeIf { it }
+            visible?.let { connected.activityVisible(it) }
             if (observing) connected.addListener(listener)
             val requests = pending.toList(); pending.clear()
             requests.forEach { (_, action) -> action(connected) }
@@ -35,8 +38,14 @@ class RecorderModule : Module() {
         Name("VeymurRecorder")
         Events("onSnapshot")
         AsyncFunction("getModuleInfo") {
-            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 2, "recorderImplemented" to true)
+            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 3, "recorderImplemented" to true)
         }
+        AsyncFunction("ensureActivity") { promise: Promise -> main.post {
+            try { requireRecorderActivity(appContext.currentActivity, visible = true); promise.resolve(mapOf("available" to true)) }
+            catch (error: Exception) { reject(promise, error) }
+        } }
+        OnActivityEntersForeground { main.post { hostVisible = true; service?.activityVisible(true) } }
+        OnActivityEntersBackground { main.post { hostVisible = false; service?.activityVisible(false) } }
         AsyncFunction("getSnapshot") { promise: Promise -> command("getSnapshot", promise) }
         AsyncFunction("search") { promise: Promise -> command("search", promise) }
         AsyncFunction("cancelSearch") { promise: Promise -> command("cancelSearch", promise) }

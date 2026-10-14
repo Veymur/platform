@@ -66,6 +66,7 @@ export class RecorderClient {
     Promise.resolve().then(() => native.getSnapshot()).then(deliver, error => { if (active) onError(recorderError(error)); });
     return () => { active = false; subscription.remove(); };
   }
+  async ensureActivity() { return this.call(n => n.ensureActivity()); }
   async search() { return this.call(n => n.search()); }
   async cancelSearch() { return this.call(n => n.cancelSearch()); }
   async connect(id: string) { return this.call(n => n.connect(id)); }

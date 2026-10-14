@@ -1,6 +1,6 @@
 # Veymur Sensor — minimal React Native app
 
-Migration stages 3–5 provide the Android host, migrated Kotlin core, and command/state bridge. `getModuleInfo` reports contractVersion=2/recorderImplemented=true; the development screen additionally reads/subscribes to real service snapshots. Full recording controls and permission dialogs belong to stage 6. iOS explicitly rejects module calls before loading Android code. See the [bridge contract](../../docs/recorder-bridge-contract.md).
+Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=3/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, start/pause/resume/confirmed finish, diagnostic ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder-bridge-contract.md).
 
 The Stage 0 recorder and stage 2 dependency probe remain separately installed/testable:
 
@@ -40,7 +40,7 @@ npm run build:android
 npm run lint:android
 ```
 
-`lint` checks TS/TSX and JS/config/tests with ESLint; `lint:android` checks our native module, not all Expo/RN dependencies. The nine Node tests verify platform/binary guards, DTO validation, subscription ordering, commit waiting and error propagation using mocked bindings; they do not simulate an iPhone or execute Kotlin. The actual Kotlin/JS integration is verified by installing the APK and inspecting its response.
+`lint` checks TS/TSX and JS/config/tests with ESLint; `lint:android` checks our native module, not all Expo/RN dependencies. The nineteen Node tests verify platform/binary guards, DTO validation, subscription ordering, commit waiting and error propagation using mocked bindings; they do not simulate an iPhone or execute Kotlin. The actual Kotlin/JS integration is verified by installing the APK and inspecting its response.
 
 APK: `android/app/build/outputs/apk/debug/app-debug.apk`. The debug key is local and is not a production signing configuration. Native versions and toolchain settings are preserved in source; `package-lock.json` v3 pins the npm graph. Do not replace the lockfile with `npm update` as part of a routine build.
 
@@ -104,7 +104,7 @@ Start with no generated host or build outputs. Inspect `node_modules/expo/androi
 
 Database tables, user_version=1, key wrapping and diagnostic ZIP schema_version=1 are unchanged; no schema migration or old-data import was introduced. Keystore aliases and filenames remain scoped to the new applicationId. At stage 4, finalization/recovery used separate SQL operations; stage 5 makes transitions transactional (see the bridge contract). Checkpoint frequency and callback loss-window limitations still require hardware measurements.
 
-The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-bridge-v2`. ZIP metadata/CSV were not changed to add this identity.
+The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-diagnostic-v3`. ZIP metadata/CSV were not changed to add this identity.
 
 Run storage/clock checks on a **dedicated test emulator** with the environment above:
 
@@ -136,4 +136,4 @@ Both ZIPs passed the unchanged Python analyzer and CRC checks. Full stage 4 comm
 
 Commands/results, APK identities and clean-checkout details are recorded in the [stage 3 report](../../docs/stage-0/react-native-minimal-app-validation.ru.md) and [recorder validation](../../docs/recorder-validation.md). Migration reports under `docs/stage-0/` and local APK/log artifacts are ignored by Git according to repository preferences.
 
-Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, real BLE/GPS, sustained foreground recording, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Keystore/storage recovery has emulator evidence only. Stage 5 now implements commands, commit acknowledgments and snapshots; final checks are in [recorder validation](../../docs/recorder-validation.md). Next: migration stage 6, diagnostic controls and permission flow.
+Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, real BLE/GPS, sustained foreground recording, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Keystore/storage recovery has emulator evidence only. Stage 5 now implements commands, commit acknowledgments and snapshots; final checks are in [recorder validation](../../docs/recorder-validation.md). Stage 6 now provides diagnostic controls/permissions; [UI verification](../../docs/recorder-diagnostic-ui.md) documents scope. Next: migration stage 7, compare this RN recorder on the real Galaxy A23/Polar sensor, including a locally bundled offline APK.

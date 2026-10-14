@@ -152,7 +152,7 @@ class NativeCoreStorageTest {
         assertFalse(service.exported)
         assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION, service.foregroundServiceType)
         val app = pm.getApplicationInfo(host.packageName, PackageManager.GET_META_DATA)
-        assertEquals("stage0-777a33b-bridge-v2", app.metaData.getString("com.veymur.recorder.CORE_VERSION"))
+        assertEquals("stage0-777a33b-diagnostic-v3", app.metaData.getString("com.veymur.recorder.CORE_VERSION"))
         assertEquals(0, app.flags and ApplicationInfo.FLAG_ALLOW_BACKUP)
         val rules = host.resources.getIdentifier("veymur_recorder_data_extraction_rules", "xml", host.packageName)
         assertTrue(rules != 0)

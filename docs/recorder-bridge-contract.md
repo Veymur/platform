@@ -2,6 +2,8 @@
 
 Implemented October 14, 2026. Contract version **2**, `recorderImplemented=true`, native core identity **stage0-777a33b-bridge-v2**. This identifies the Android command/state implementation, not hardware validation or a finished recording interface. iOS remains unsupported. The previous Kotlin app is unchanged and uses a separate sandbox.
 
+Stage 6 extends the current binary to **contract version 3**, core identity **stage0-777a33b-diagnostic-v3**, adding `ensureActivity(): Promise<{available:true}>` for permission/dialog guards and native host lifecycle forwarding. Snapshot/command commit semantics below remain unchanged. The version-2 test results describe stage 5; use the version-3 binary with the [current diagnostic UI](recorder-diagnostic-ui.md).
+
 ## Public API and acknowledgments
 
 Use `src/recorder/RecorderClient.ts`; DTOs and native signatures live in `modules/veymur-recorder/src/types.ts`, re-exported through `src/recorder/types.ts`. `getModuleInfo()` rejects an incompatible installed binary. Rebuild/reinstall after updating the native contract.

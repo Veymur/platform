@@ -44,6 +44,7 @@ class RecorderService : Service() {
     private lateinit var api: PolarBleApi
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var searchJob: Job? = null
+    private var lastActivityVisible: Boolean? = null
     private var selected: String? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var routeEnabled = false
@@ -235,6 +236,8 @@ class RecorderService : Service() {
         }
     }
     fun activityVisible(visible: Boolean) {
+        if (lastActivityVisible == visible) return
+        lastActivityVisible = visible
         if (::api.isInitialized && visible && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) api.foregroundEntered()
         enqueue { record(if (visible) "activity_foreground" else "activity_background", JSONObject()) }
     }

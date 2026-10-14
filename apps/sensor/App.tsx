@@ -1,5 +1,2 @@
-import { NativeIntegrationScreen } from './src/screens/NativeIntegrationScreen';
-
-export default function App() {
-  return <NativeIntegrationScreen />;
-}
+import { DiagnosticRecorderScreen } from './src/screens/DiagnosticRecorderScreen';
+export default function App() { return <DiagnosticRecorderScreen />; }

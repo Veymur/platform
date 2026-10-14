@@ -1,5 +1,5 @@
 export type RecorderModuleInfo = {
-  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 2; recorderImplemented: true;
+  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 3; recorderImplemented: true;
 };
 export type RecorderErrorCode = 'UNSUPPORTED_PLATFORM' | 'INCOMPATIBLE_BINARY' | 'SERVICE_UNAVAILABLE' |
   'NOT_READY' | 'NO_ACTIVITY' | 'PERMISSION_DENIED' | 'INVALID_STATE' | 'INVALID_ARGUMENT' |
@@ -18,6 +18,7 @@ export type SessionResult = { sessionId: string; state: 'recording' | 'paused' |
 export type ExportResult = { uri: string; mimeType: 'application/zip' };
 export interface NativeRecorderModule {
   getModuleInfo(): Promise<unknown>;
+  ensureActivity(): Promise<{ available: true }>;
   getSnapshot(): Promise<unknown>;
   addListener(event: 'onSnapshot', listener: (value: unknown) => void): { remove(): void };
   search(): Promise<{ accepted: true }>;

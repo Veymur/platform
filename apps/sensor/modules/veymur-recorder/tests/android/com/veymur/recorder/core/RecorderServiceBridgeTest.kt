@@ -26,9 +26,9 @@ class RecorderServiceBridgeTest {
         val task = FutureTask<Unit> { action() }
         (field(service, "worker").get(service) as Handler).post(task); task.get(10, TimeUnit.SECONDS)
     }
-    private fun command(service: RecorderService, name: String): Result<Map<String, Any?>> {
+    private fun command(service: RecorderService, name: String, route: Boolean = false): Result<Map<String, Any?>> {
         val latch = CountDownLatch(1); var result: Result<Map<String, Any?>>? = null
-        service.execute(name) { result = it; latch.countDown() }
+        service.execute(name, route = route) { result = it; latch.countDown() }
         assertTrue("Command $name completed", latch.await(10, TimeUnit.SECONDS)); return result!!
     }
     private class Binding(val service: RecorderService, val connection: ServiceConnection)
@@ -93,6 +93,18 @@ class RecorderServiceBridgeTest {
         try {
             isolated(service); foreground(service)
             val id = command(service, "start").getOrThrow()["sessionId"]; assertNotNull(id)
+            instrumentation.runOnMainSync {
+                service.activityVisible(true); service.activityVisible(false); service.activityVisible(false); service.activityVisible(true)
+            }
+            writer(service) {
+                val journal = field(service, "journal").get(service) as Journal
+                java.util.zip.ZipFile(journal.export(id as String)).use { zip ->
+                    val rows = zip.getInputStream(zip.getEntry("records.csv")).bufferedReader().readLines()
+                    assertEquals(2, rows.count { it.contains(",activity_foreground,") })
+                    assertEquals(1, rows.count { it.contains(",activity_background,") })
+                    assertEquals(0, rows.count { it.contains(",screen_off,") })
+                }
+            }
             val initial = CountDownLatch(1)
             val listener: (Map<String, Any?>) -> Unit = { if (it["sessionId"] == id) initial.countDown() }
             service.addListener(listener); assertTrue(initial.await(5, TimeUnit.SECONDS)); service.removeListener(listener)
@@ -128,4 +140,18 @@ class RecorderServiceBridgeTest {
             assertEquals(id, command(service, "finish").getOrThrow()["sessionId"])
         } finally { command(service, "finish"); unbind(binding) }
     }
+    @Test fun routeDeniedStillStartsHrOnlyWithCorrectForegroundType() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); foreground(service)
+            assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED, service.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION))
+            assertNotNull(command(service, "start", route = true).getOrThrow()["sessionId"])
+            val state = command(service, "getSnapshot").getOrThrow()
+            assertEquals(false, state["routeEnabled"])
+            assertTrue((state["gpsStatus"] as String).contains("GPS unavailable"))
+            assertEquals(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE, service.foregroundServiceType)
+            command(service, "finish").getOrThrow()
+        } finally { command(service, "finish"); unbind(binding) }
+    }
+
 }

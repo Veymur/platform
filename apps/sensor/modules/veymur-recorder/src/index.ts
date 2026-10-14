@@ -15,7 +15,7 @@ export async function getModuleInfo(): Promise<RecorderModuleInfo> {
   if (result === null || typeof result !== 'object' ||
       !('moduleName' in result) || result.moduleName !== 'VeymurRecorder' ||
       !('platform' in result) || result.platform !== 'android' ||
-      !('contractVersion' in result) || result.contractVersion !== 2 ||
+      !('contractVersion' in result) || result.contractVersion !== 3 ||
       !('recorderImplemented' in result) || result.recorderImplemented !== true) {
     throw Object.assign(new Error('Incompatible VeymurRecorder native binary. Rebuild and install the development build.'), { code: 'INCOMPATIBLE_BINARY' });
   }

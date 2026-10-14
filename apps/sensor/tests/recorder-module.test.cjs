@@ -39,8 +39,8 @@ function wrapper(platform, nativeInfo) {
 const info = {
   moduleName: "VeymurRecorder",
   platform: "android",
-  contractVersion: 1,
-  recorderImplemented: false,
+  contractVersion: 2,
+  recorderImplemented: true,
 };
 
 test("iOS rejects before loading an Android-only native module", async () => {
@@ -52,18 +52,18 @@ test("iOS rejects before loading an Android-only native module", async () => {
   assert.equal(nativeLoads(), 0);
 });
 
-test("Android returns a valid typed handshake, with recording unavailable", async () => {
+test("Android returns a valid typed handshake, with recording commands available", async () => {
   const { client } = wrapper("android", info);
   const result = await client.getModuleInfo();
   assert.deepEqual(JSON.parse(JSON.stringify(result)), info);
 });
 
 test("an incompatible installed native binary requires rebuilding", async () => {
-  const { client } = wrapper("android", { ...info, contractVersion: 2 });
+  const { client } = wrapper("android", { ...info, contractVersion: 1 });
   await assert.rejects(client.getModuleInfo(), /Rebuild and install/);
 });
 
 test("a binary advertising unimplemented recording is not accepted", async () => {
-  const { client } = wrapper("android", { ...info, recorderImplemented: true });
+  const { client } = wrapper("android", { ...info, recorderImplemented: false });
   await assert.rejects(client.getModuleInfo(), /Incompatible VeymurRecorder/);
 });

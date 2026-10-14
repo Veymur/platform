@@ -76,3 +76,9 @@ These requirements were checked against the current [foreground service types](h
 - Check both configured target SDK and actual runtime OS. Target 36 does not upgrade Galaxy A23 from API 34. On Android 16, foreground-service jobs are subject to job quotas ([behavior changes](https://developer.android.com/about/versions/16/behavior-changes-16)); do not treat an FGS as unlimited execution for future job scheduling.
 
 Force stop/reboot continuity, BLE recovery, phone locking, storage access, battery cost and recording loss windows remain hardware/core checks. Expo module registration alone makes none of these guarantees.
+
+## Android bridge — migration stage 5
+
+The same pinned stack now implements native recorder contract version 2 (`recorderImplemented=true`), with core identity `stage0-777a33b-bridge-v2`. No dependency versions changed. Commands use explicit Expo Promise acknowledgment after native writer commits and OnStartObserving/OnStopObserving event hooks, as defined by the [Expo module API](https://docs.expo.dev/modules/module-api/). Binding is separate from recording's started foreground service according to [Android bound-service semantics](https://developer.android.com/develop/background-work/services/bound-services).
+
+On API 34: typecheck/lint, 9 TS contract tests, 2 native JVM tests and 13 host instrumentation tests passed; module lint has 0 errors/7 warnings. Real RN/Expo state read/subscription succeeded. Foreground service survival and transaction errors use synthetic fixtures, not a connected Polar device. The diagnostic UI/permissions belong to stage 6; real phone/JS reload/BLE/GPS and iOS validation remain pending. See [bridge contract](recorder-bridge-contract.md) and [verification](recorder-validation.md).

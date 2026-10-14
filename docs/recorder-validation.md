@@ -2,6 +2,25 @@
 
 Status: the user has installed the Android prototype; hardware exports from Galaxy A23 / Android 14 confirm local recording and completion, including HR/GPS persistence during a screen-off interval longer than 10 minutes, continued GPS during sensor loss, HR resumption after reconnection, preservation of an interrupted HR session after force stop/relaunch, HR pause/resume with paused time excluded, and completed HR recording/export under tester-reported offline conditions, and HR-only recording with phone location disabled before startup. HR receipt gaps are documented below. The full hardware scenario matrix has not yet been completed. Stage 0 remains incomplete. iOS has not been tested.
 
+## Recorder Bridge — Migration Stage 5, October 14, 2026
+
+Android contract version 2 exposes RecorderClient commands and complete snapshots through the local Expo Module. Native core identity is `stage0-777a33b-bridge-v2`; SQL/ZIP schema 1 and the old Kotlin application are preserved. Recording commands resolve after writer commits; start/configuration, pause/resume, finish and interrupted recovery are transactional. Repeated pause/resume/finish are idempotent. Failed start/finish reject without half-created sessions or false completion. Native elapsed time determines HR freshness; missing/stale HR remains null. Revisions prevent a delayed initial read from overwriting a newer event. JS detach only releases its listener/binding; a started foreground recorder remains native-owned. Export exposes a scoped content URI, and sharing acknowledges only chooser opening.
+
+Verification commands/results from `apps/sensor`:
+
+- `npm run typecheck`, `npm run lint`, `npm test`: passed; 9 Node tests.
+- `npm run prebuild:android`: generated host/test sources successfully; no hand-edited host files required.
+- `android/gradlew -p android :app:assembleDebug :app:assembleDebugAndroidTest :veymur-recorder:testDebugUnitTest :veymur-recorder:lintDebug`: BUILD SUCCESSFUL; 2 JVM tests, native lint 0 errors/7 warnings.
+- Test APK installed on a fresh Android 14/API 34 x86_64 emulator and run with `adb shell am instrument -w -r com.veymur.sensor.test/androidx.test.runner.AndroidJUnitRunner`: **13 tests passed**. Seven added tests cover real foreground service survival across unsubscribe/unbind/rebind, increasing revisions/stale HR, NOT_READY/SERVICE_UNAVAILABLE/NO_ACTIVITY, idempotency and SQL-trigger failure/rollback for start/pause/resume/finish. Service fixtures replace an empty host journal with isolated databases and a synthetic connection; no real sensor is involved.
+- Actual RN/Expo startup returned `RECORDER_MODULE_OK` (version 2/implemented true) and `RECORDER_BRIDGE_OK` with a ready native snapshot. The smoke screen reads/subscribes without requesting Bluetooth or starting recording.
+- Both retained completed/interrupted synthetic ZIPs passed `python3 ../sensor-stage0/scripts/analyze_export.py`; `python3 -m unittest discover -s ../sensor-stage0/scripts -v`: 4 existing analyzer tests passed. ZIP schema remains 1.
+
+Final debug APK SHA-256: `0b480cec225600881a4b4b4c638935a25ff1963b64fb6281af79b9947fa1a96d`; local logs/APKs/ZIPs under ignored `artifacts/stage5/`. The first lifecycle test assumed a checkpoint would already contain 1000 ms after a 1200 ms wait; because checkpoint phase varies, it now waits for the native checkpoint with a bounded deadline. The complete final suite passes.
+
+Affected sources and API/error/lifecycle semantics: [bridge contract](recorder-bridge-contract.md), [app instructions](../apps/sensor/README.md), RecorderModule/RecorderActivity, native RecorderSession/RecorderService/Journal, typed module API/RecorderClient, smoke screen and contract/instrumentation tests. No new dependency versions were introduced. Async Promise acknowledgment and observer lifecycle follow the [Expo module API](https://docs.expo.dev/modules/module-api/); recording persists across unbind using Android's [started and bound service semantics](https://developer.android.com/develop/background-work/services/bound-services).
+
+Limits: the app still needs diagnostic controls and explicit permission dialogs (migration stage 6). Foreground lifecycle evidence is synthetic emulator evidence; real BLE/GPS, actual JS reload during recording, phone locking/process termination, chooser/recipient behavior, battery/loss window, and iOS remain unverified for this RN build. Stage 0/hardware validation are not marked complete. Next: migration stage 6, diagnostic screen and permissions.
+
 ## Kotlin Core in RN Host — Migration Stage 4, October 13, 2026
 
 RecordingClock, Journal and RecorderService now reside in `apps/sensor/modules/veymur-recorder/android/src/main/java/com/veymur/recorder/core`. Production writes remain on the native service worker; no core file imports React/Expo. Source differences are limited to the package and notification launcher Intent. SQL schema/user_version=1 and ZIP schema_version=1 are unchanged. Core identity `stage0-777a33b-host-v1` is embedded in APK manifest metadata. Private service/provider/permissions and backup rules are reproduced through module resources/config plugin.

@@ -64,19 +64,31 @@ class Journal(private val context: Context) {
             while (it.moveToNext()) ids.add(it.getString(0))
         }
         ids.forEach { id ->
-            append(id, "interrupted", JSONObject().put("reason", "process_ended"))
-            db.execSQL("UPDATE sessions SET state='interrupted' WHERE id=?", arrayOf(id))
+            transaction {
+                append(id, "interrupted", JSONObject().put("reason", "process_ended"))
+                db.execSQL("UPDATE sessions SET state='interrupted' WHERE id=?", arrayOf(id))
+            }
         }
         return ids.size
     }
-    fun begin(device: String, gps: Boolean): String {
+    fun begin(device: String, gps: Boolean, configuration: JSONObject? = null): String = transaction {
         val id = UUID.randomUUID().toString()
         db.insertOrThrow("sessions", null, ContentValues().apply {
             put("id", id); put("device", device); put("started", System.currentTimeMillis())
             put("state", "recording"); put("gps", if (gps) 1 else 0)
         })
         append(id, "start", JSONObject())
-        return id
+        configuration?.let { append(id, "configuration", it) }
+        id
+    }
+    private fun <T> transaction(action: () -> T): T {
+        db.beginTransaction()
+        try { val value = action(); db.setTransactionSuccessful(); return value }
+        finally { db.endTransaction() }
+    }
+    fun transition(id: String, event: String, state: String, activeMs: Long, payload: JSONObject = JSONObject()) = transaction {
+        append(id, event, payload)
+        updateState(id, state, activeMs)
     }
     fun append(id: String, kind: String, payload: JSONObject) {
         db.beginTransaction()

@@ -1,2 +1,2 @@
-export { getModuleInfo } from './src';
-export type { RecorderModuleInfo } from './src';
+export { getModuleInfo, nativeRecorder } from './src';
+export type * from './src';

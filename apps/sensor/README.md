@@ -1,6 +1,6 @@
 # Veymur Sensor — minimal React Native app
 
-Migration stages 3–4 provide the Android host, a local Expo Module and the migrated Kotlin recording core. The development screen still verifies only a typed JS → Kotlin response: **recording commands are not exposed to JS yet**. `getModuleInfo` does not open a database or start the service; recorderImplemented=false describes this intermediate public API. iOS has an explicit unsupported-platform message and rejects module calls before loading Android code.
+Migration stages 3–5 provide the Android host, migrated Kotlin core, and command/state bridge. `getModuleInfo` reports contractVersion=2/recorderImplemented=true; the development screen additionally reads/subscribes to real service snapshots. Full recording controls and permission dialogs belong to stage 6. iOS explicitly rejects module calls before loading Android code. See the [bridge contract](../../docs/recorder-bridge-contract.md).
 
 The Stage 0 recorder and stage 2 dependency probe remain separately installed/testable:
 
@@ -16,7 +16,7 @@ Their databases, preferences and Keystore scopes are separate. No automatic data
 
 Node **22.22.2**, npm **10.9.7**, a full JDK **21** (with `javac`), Android SDK Platform **36**, Build Tools **36.0.0**, platform-tools, NDK **27.1.12297006**, CMake **3.22.1**. The selected Gradle is **9.3.1**, Kotlin compiler **2.3.20**, AGP **8.12.0**; the recorder module targets Java 17 bytecode. npm/Maven/Google/JitPack and Gradle downloads need network access. No Expo/EAS account is required for these local builds.
 
-Versions inherited from the stage 2 probe: Expo **57.0.28**, RN **0.86.3**, React **19.2.3**, expo-dev-client **57.0.20**, expo-build-properties **57.0.22**. Native dependencies Polar **8.4.0**, SQLCipher **4.6.1** and androidx.sqlite **2.4.0** are included for the next core migration. Effective Android minimum is **API 33 / Android 13**; compile/target SDK is 36. Checked build ABIs are arm64-v8a and x86_64. See [compatibility](../../docs/compatibility.md) for sources and remaining platform limitations.
+Versions inherited from the stage 2 probe: Expo **57.0.28**, RN **0.86.3**, React **19.2.3**, expo-dev-client **57.0.20**, expo-build-properties **57.0.22**. Native dependencies Polar **8.4.0**, SQLCipher **4.6.1** and androidx.sqlite **2.4.0** are used by the migrated native core. Effective Android minimum is **API 33 / Android 13**; compile/target SDK is 36. Checked build ABIs are arm64-v8a and x86_64. See [compatibility](../../docs/compatibility.md) for sources and remaining platform limitations.
 
 Configure `JAVA_HOME` and `ANDROID_HOME`, and add platform-tools to PATH. On the validation machine:
 
@@ -40,7 +40,7 @@ npm run build:android
 npm run lint:android
 ```
 
-`lint` checks TS/TSX and JS/config/tests with ESLint; `lint:android` checks our native module, not all Expo/RN dependencies. The four Node tests verify the public wrapper's platform and binary compatibility guards using mocked RN/Expo bindings; they do not simulate an iPhone or execute Kotlin. The actual Kotlin/JS integration is verified by installing the APK and inspecting its response.
+`lint` checks TS/TSX and JS/config/tests with ESLint; `lint:android` checks our native module, not all Expo/RN dependencies. The nine Node tests verify platform/binary guards, DTO validation, subscription ordering, commit waiting and error propagation using mocked bindings; they do not simulate an iPhone or execute Kotlin. The actual Kotlin/JS integration is verified by installing the APK and inspecting its response.
 
 APK: `android/app/build/outputs/apk/debug/app-debug.apk`. The debug key is local and is not a production signing configuration. Native versions and toolchain settings are preserved in source; `package-lock.json` v3 pins the npm graph. Do not replace the lockfile with `npm update` as part of a routine build.
 
@@ -74,8 +74,8 @@ An outdated/incompatible native response produces an error asking to rebuild/ins
 ## Source ownership and clean regeneration
 
 - `app.config.ts` defines the host identity and SDK settings.
-- `modules/veymur-recorder/expo-module.config.json` declares Android module registration; `android/src/main/java/.../RecorderModule.kt` owns the native handshake.
-- `modules/veymur-recorder/src/index.ts` exposes `getModuleInfo()` and validates the native DTO; `src/types.ts` defines its public type. Recording commands are a later contract.
+- `modules/veymur-recorder/expo-module.config.json` declares Android module registration; `android/src/main/java/.../RecorderModule.kt` owns native commands, binding and state events.
+- `modules/veymur-recorder/src/index.ts` exposes native access and the versioned handshake; `src/types.ts` defines commands/DTOs. `src/recorder/RecorderClient.ts` validates snapshots and orders subscriptions.
 - `modules/veymur-recorder/plugin/withVeymurRecorder.cjs` pins the Kotlin compiler classpath, Gradle checksum and ABIs. Kotlin must remain consistent with build-properties. The plugin fails when the expected template/wrapper changes, requiring renewed validation.
 - Root `android/` and `ios/` are generated and ignored. The **local module's** `modules/veymur-recorder/android/` contains source and belongs in Git. Do not store the only copy of native changes in the generated host.
 
@@ -100,11 +100,11 @@ Start with no generated host or build outputs. Inspect `node_modules/expo/androi
 
 ### Native core — migration stage 4
 
-`modules/veymur-recorder/android/src/main/java/com/veymur/recorder/core/` contains `RecordingClock`, `Journal` and `RecorderService`. The service remains the production database writer: Polar/GPS callbacks enqueue work on its HandlerThread; JS is not involved in persistence. Core source imports no Expo/React APIs. Changes from the old core are limited to Kotlin package names and looking up the host launcher Intent instead of referring to the prototype MainActivity. Foreground types, notification channel, wake lock, stream handling and resource cleanup remain as in the baseline.
+`modules/veymur-recorder/android/src/main/java/com/veymur/recorder/core/` contains `RecordingClock`, `Journal` and `RecorderService`. The service remains the production database writer: Polar/GPS callbacks enqueue work on its HandlerThread; JS is not involved in persistence. Core source imports no Expo/React APIs. At stage 4, changes from the old core were limited to Kotlin package names and looking up the host launcher Intent instead of referring to the prototype MainActivity. Foreground types, notification channel, wake lock, stream handling and resource cleanup remain as in the baseline.
 
-Database tables, user_version=1, key wrapping and diagnostic ZIP schema_version=1 are unchanged; no schema migration or old-data import was introduced. Keystore aliases and filenames remain scoped to the new applicationId. Session finalization/recovery still use multiple SQL operations; error handling, checkpoints and callback loss-window limitations from the baseline require separate work.
+Database tables, user_version=1, key wrapping and diagnostic ZIP schema_version=1 are unchanged; no schema migration or old-data import was introduced. Keystore aliases and filenames remain scoped to the new applicationId. At stage 4, finalization/recovery used separate SQL operations; stage 5 makes transitions transactional (see the bridge contract). Checkpoint frequency and callback loss-window limitations still require hardware measurements.
 
-The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-host-v1`. ZIP metadata/CSV were not changed to add this identity.
+The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-bridge-v2`. ZIP metadata/CSV were not changed to add this identity.
 
 Run storage/clock checks on a **dedicated test emulator** with the environment above:
 
@@ -115,7 +115,7 @@ npm run test:android:device
 npm run lint:android
 ```
 
-Clock JVM tests live in the local module's android/src/test. Host instrumentation source lives in `modules/veymur-recorder/tests/android/`; the config plugin copies it into generated `android/app/src/androidTest/java` and configures the runner/dependencies. This tests the actual `com.veymur.sensor` sandbox, not a library-only test app. Tests use separate instrumentation-prefixed databases/preferences, not the production journal. The tests do not bind/start RecorderService or connect a sensor.
+Clock JVM tests live in the local module's android/src/test. Host instrumentation source lives in `modules/veymur-recorder/tests/android/`; the config plugin copies it into generated `android/app/src/androidTest/java` and configures the runner/dependencies. This tests the actual `com.veymur.sensor` sandbox, not a library-only test app. Tests use separate instrumentation-prefixed databases/preferences, not the production journal. Stage 5 service tests additionally bind/start a real foreground service with isolated storage and synthetic connected state; no sensor is connected. Run them on a fresh dedicated host without an existing RN subscription.
 
 Verification on Android 14: 2 clock tests and 6 host instrumentation tests passed, covering SQLCipher header/Keystore reopen, completed/interrupted recovery, append rollback after injected SQL failure, synthetic HR/GPS with pause/resume/finish, ZIP readback, FileProvider scope, private service/permissions, core identity and backup protection. Synthetic active time uses a controlled clock; these tests do not validate real sensor callbacks, stream suppression on pause, lock-screen recording or abrupt process death. Native lint: 0 errors, 6 warnings.
 
@@ -136,4 +136,4 @@ Both ZIPs passed the unchanged Python analyzer and CRC checks. Full stage 4 comm
 
 Commands/results, APK identities and clean-checkout details are recorded in the [stage 3 report](../../docs/stage-0/react-native-minimal-app-validation.ru.md) and [recorder validation](../../docs/recorder-validation.md). Migration reports under `docs/stage-0/` and local APK/log artifacts are ignored by Git according to repository preferences.
 
-Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, BLE/GPS, foreground recording, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Keystore/storage recovery has emulator evidence only. Next: migration stage 5, implement commands, commit acknowledgments and recorder snapshots at the JS/native boundary.
+Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, real BLE/GPS, sustained foreground recording, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Keystore/storage recovery has emulator evidence only. Stage 5 now implements commands, commit acknowledgments and snapshots; final checks are in [recorder validation](../../docs/recorder-validation.md). Next: migration stage 6, diagnostic controls and permission flow.

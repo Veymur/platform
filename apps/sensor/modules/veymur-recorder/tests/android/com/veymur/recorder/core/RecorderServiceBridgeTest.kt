@@ -5,6 +5,8 @@ import android.content.*
 import android.os.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.polar.sdk.api.model.PolarDeviceInfo
+import com.polar.sdk.api.model.PolarHrData
 import com.veymur.recorder.requireRecorderActivity
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.junit.Assert.*
@@ -152,6 +154,74 @@ class RecorderServiceBridgeTest {
             assertEquals(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE, service.foregroundServiceType)
             command(service, "finish").getOrThrow()
         } finally { command(service, "finish"); unbind(binding) }
+    }
+
+    @Test fun polarInputCapturePrecedesDiscoveryFiltersAndSurvivesSessionBoundariesAndPause() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); foreground(service)
+            val input = field(service, "polarInputs").get(service) as PolarInputBoundary
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            val search = field(service, "polarSearch").get(service) as PolarSearchInput
+            val sink = PolarInputBoundaryTest.Sink("synthetic-service")
+            input.setSink(sink)
+            val other = PolarDeviceInfo("OTHER", "00:00:00:00:00:00", -90, "Other sensor", true)
+            val unavailable = other.copy(deviceId = "UNAVAILABLE", name = "Sense", isConnectable = false)
+            val eligible = other.copy(deviceId = "SYNTHETIC", name = "Sense", rssi = -60)
+            search.result("search-test", other); search.result("search-test", unavailable)
+            search.result("search-test", eligible); search.result("search-test", eligible.copy(rssi = -40))
+            fun hr(bpm: Int) = callbacks.hrNotificationReceived("SYNTHETIC",
+                PolarHrData.PolarHrSample(bpm, 0, 0, emptyList(), emptyList(), false, false, true))
+            hr(80); hr(0)
+            var state = command(service, "getSnapshot").getOrThrow()
+            assertNull(state["hr"]); assertEquals(0, state["hrCount"])
+            assertEquals(1, service.snapshot.devices.size); assertEquals(-60, service.snapshot.devices.single().rssi)
+            assertEquals(4, sink.inputs.count { it.eventType == "search_result" })
+            val id = command(service, "start").getOrThrow()["sessionId"] as String
+            hr(82); command(service, "pause").getOrThrow(); hr(83)
+            state = command(service, "getSnapshot").getOrThrow()
+            assertEquals("paused", state["sessionState"]); assertEquals(1, state["hrCount"])
+            command(service, "resume").getOrThrow(); hr(84)
+            command(service, "finish").getOrThrow(); hr(85)
+            state = command(service, "getSnapshot").getOrThrow()
+            assertEquals("completed", state["sessionState"]); assertEquals(2, state["hrCount"])
+            assertEquals(listOf(80, 0, 82, 83, 84, 85), sink.inputs.filter { it.eventType == "hr" }.map { it.payload().getInt("hr") })
+            assertEquals(sink.inputs.size, sink.processing.size)
+            assertEquals(2, sink.processing.count { it.input.eventType == "search_result" && it.outcome == "ignored" })
+            writer(service) {
+                val journal = field(service, "journal").get(service) as Journal
+                java.util.zip.ZipFile(journal.export(id)).use { zip ->
+                    val rows = zip.getInputStream(zip.getEntry("records.csv")).bufferedReader().readLines()
+                    assertEquals(2, rows.count { it.contains(",hr,") })
+                    assertTrue(rows.any { it.contains("82") && it.contains(",hr,") })
+                    assertTrue(rows.any { it.contains("84") && it.contains(",hr,") })
+                }
+            }
+            input.setSink(null)
+        } finally { unbind(binding) }
+    }
+
+    @Test fun delayedPolarInputUsesReceiptAgeInsteadOfWorkerTimeForFreshness() {
+        val binding = bind(); val service = binding.service
+        val release = CountDownLatch(1)
+        try {
+            isolated(service)
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            val input = field(service, "polarInputs").get(service) as PolarInputBoundary
+            val sink = PolarInputBoundaryTest.Sink("synthetic-delayed"); input.setSink(sink)
+            val blocked = CountDownLatch(1)
+            (field(service, "worker").get(service) as Handler).post { blocked.countDown(); release.await(10, TimeUnit.SECONDS) }
+            assertTrue(blocked.await(5, TimeUnit.SECONDS))
+            callbacks.deviceConnected(PolarDeviceInfo("SYNTHETIC", "00:00:00:00:00:00", -50, "Sense", true))
+            callbacks.hrNotificationReceived("SYNTHETIC", PolarHrData.PolarHrSample(82, 0, 0, emptyList(), emptyList(), false, true, true))
+            assertEquals(2, sink.inputs.size); assertTrue(sink.processing.isEmpty())
+            SystemClock.sleep(5100); release.countDown()
+            val state = command(service, "getSnapshot").getOrThrow()
+            assertNull(state["hr"]); assertEquals("stale", state["hrStatus"])
+            val processing = sink.processing.single { it.input.eventType == "hr" }
+            assertTrue(processing.processedElapsedNs - processing.input.receivedElapsedNs >= 5_000_000_000L)
+            input.setSink(null)
+        } finally { release.countDown(); unbind(binding) }
     }
 
 }

@@ -16,7 +16,5 @@ diagnostic-exports/
 .env.*
 !.env.example
 
-!/docs/
-!/docs/**
-/docs/stage-0/
-/docs/migration-baseline/
+/docs/
+/docs/**

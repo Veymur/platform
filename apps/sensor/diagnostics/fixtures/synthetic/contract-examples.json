@@ -1,0 +1,541 @@
+{
+  "events": [
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 1,
+      "received_utc_ms": 1700000000000,
+      "received_elapsed_ns": "1000000000",
+      "source": "polar_sdk",
+      "event_type": "bluetooth",
+      "callback_variant": "blePowerStateChanged",
+      "device_id": null,
+      "payload": {
+        "powered": false
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 2,
+      "received_utc_ms": 1700000000001,
+      "received_elapsed_ns": "1001000000",
+      "source": "polar_sdk",
+      "event_type": "connecting",
+      "callback_variant": "deviceConnecting",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "info": {
+          "deviceId": "SYNTHETIC-DEVICE",
+          "address": "00:00:00:00:00:00",
+          "rssi": -77,
+          "name": "Synthetic Sense",
+          "isConnectable": false,
+          "hasHeartRateService": true,
+          "hasFileSystemService": false,
+          "hasSAGRFCFileSystem": false
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 3,
+      "received_utc_ms": 1700000000002,
+      "received_elapsed_ns": "1002000000",
+      "source": "polar_sdk",
+      "event_type": "connected",
+      "callback_variant": "deviceConnected",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "info": {
+          "deviceId": "SYNTHETIC-DEVICE",
+          "address": "00:00:00:00:00:00",
+          "rssi": -77,
+          "name": "Synthetic Sense",
+          "isConnectable": false,
+          "hasHeartRateService": true,
+          "hasFileSystemService": false,
+          "hasSAGRFCFileSystem": false
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 4,
+      "received_utc_ms": 1700000000003,
+      "received_elapsed_ns": "1003000000",
+      "source": "polar_sdk",
+      "event_type": "disconnected",
+      "callback_variant": "deviceDisconnected.legacy",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "info": {
+          "deviceId": "SYNTHETIC-DEVICE",
+          "address": "00:00:00:00:00:00",
+          "rssi": -77,
+          "name": "Synthetic Sense",
+          "isConnectable": false,
+          "hasHeartRateService": true,
+          "hasFileSystemService": false,
+          "hasSAGRFCFileSystem": false
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 5,
+      "received_utc_ms": 1700000000004,
+      "received_elapsed_ns": "1004000000",
+      "source": "polar_sdk",
+      "event_type": "disconnected",
+      "callback_variant": "deviceDisconnected.diagnostics",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "info": {
+          "deviceId": "SYNTHETIC-DEVICE",
+          "address": "00:00:00:00:00:00",
+          "rssi": -77,
+          "name": "Synthetic Sense",
+          "isConnectable": false,
+          "hasHeartRateService": true,
+          "hasFileSystemService": false,
+          "hasSAGRFCFileSystem": false
+        },
+        "diagnostics": {
+          "reason": "UNKNOWN",
+          "recoveryAction": "NONE",
+          "gattStatus": null,
+          "deviceCommand": null
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 6,
+      "received_utc_ms": 1700000000005,
+      "received_elapsed_ns": "1005000000",
+      "source": "polar_sdk",
+      "event_type": "hr",
+      "callback_variant": "hrNotificationReceived",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "hr": 0,
+        "correctedHr": 0,
+        "ppgQuality": -1,
+        "rrs": [
+          1024,
+          0,
+          1024
+        ],
+        "rrsMs": [
+          1000,
+          0,
+          1000
+        ],
+        "rrAvailable": false,
+        "contactStatus": false,
+        "contactStatusSupported": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 7,
+      "received_utc_ms": 1700000000006,
+      "received_elapsed_ns": "1006000000",
+      "source": "polar_sdk",
+      "event_type": "battery_level",
+      "callback_variant": "batteryLevelReceived",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "level": 0
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 8,
+      "received_utc_ms": 1700000000007,
+      "received_elapsed_ns": "1007000000",
+      "source": "polar_sdk",
+      "event_type": "battery_charging",
+      "callback_variant": "batteryChargingStatusReceived",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "chargingStatus": "UNKNOWN"
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 9,
+      "received_utc_ms": 1700000000008,
+      "received_elapsed_ns": "1008000000",
+      "source": "polar_sdk",
+      "event_type": "power_sources",
+      "callback_variant": "powerSourcesStateReceived",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "batteryPresent": "UNKNOWN",
+        "wiredExternalPowerConnected": "RESERVED_FOR_FUTURE_USE",
+        "wirelessExternalPowerConnected": "NOT_CONNECTED"
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 10,
+      "received_utc_ms": 1700000000009,
+      "received_elapsed_ns": "1009000000",
+      "source": "polar_sdk",
+      "event_type": "device_info",
+      "callback_variant": "disInformationReceived.uuid",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "uuid": "00002a26-0000-1000-8000-00805f9b34fb",
+        "value": ""
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 11,
+      "received_utc_ms": 1700000000010,
+      "received_elapsed_ns": "1010000000",
+      "source": "polar_sdk",
+      "event_type": "device_info",
+      "callback_variant": "disInformationReceived.key",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "key": "firmware",
+        "value": "synthetic"
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 12,
+      "received_utc_ms": 1700000000011,
+      "received_elapsed_ns": "1011000000",
+      "source": "polar_sdk",
+      "event_type": "feature_ready",
+      "callback_variant": "bleSdkFeatureReady",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "feature": "FEATURE_HR"
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 13,
+      "received_utc_ms": 1700000000012,
+      "received_elapsed_ns": "1012000000",
+      "source": "polar_sdk",
+      "event_type": "features_readiness",
+      "callback_variant": "bleSdkFeaturesReadiness",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "ready": [
+          "FEATURE_HR",
+          "FEATURE_DEVICE_INFO"
+        ],
+        "unavailable": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 14,
+      "received_utc_ms": 1700000000013,
+      "received_elapsed_ns": "1013000000",
+      "source": "polar_sdk",
+      "event_type": "thermometer",
+      "callback_variant": "htsNotificationReceived",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "celsius": {
+          "ieee754_hex": "7fc00000"
+        },
+        "fahrenheit": {
+          "ieee754_hex": "80000000"
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 15,
+      "received_utc_ms": 1700000000014,
+      "received_elapsed_ns": "1014000000",
+      "source": "polar_sdk",
+      "event_type": "companion_appeared",
+      "callback_variant": "polarCompanionDeviceAppeared",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {}
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 16,
+      "received_utc_ms": 1700000000015,
+      "received_elapsed_ns": "1015000000",
+      "source": "polar_sdk",
+      "event_type": "companion_disappeared",
+      "callback_variant": "polarCompanionDeviceDisappeared",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {}
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 17,
+      "received_utc_ms": 1700000000016,
+      "received_elapsed_ns": "1016000000",
+      "source": "polar_sdk",
+      "event_type": "search_result",
+      "callback_variant": "searchForDevice.collect",
+      "device_id": "SYNTHETIC-DEVICE",
+      "payload": {
+        "subscription_id": "search-1",
+        "info": {
+          "deviceId": "SYNTHETIC-DEVICE",
+          "address": "00:00:00:00:00:00",
+          "rssi": -77,
+          "name": "Synthetic Sense",
+          "isConnectable": false,
+          "hasHeartRateService": true,
+          "hasFileSystemService": false,
+          "hasSAGRFCFileSystem": false
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 18,
+      "received_utc_ms": 1700000000017,
+      "received_elapsed_ns": "1017000000",
+      "source": "polar_sdk",
+      "event_type": "search_completed",
+      "callback_variant": "searchForDevice.complete",
+      "device_id": null,
+      "payload": {
+        "subscription_id": "search-1"
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 19,
+      "received_utc_ms": 1700000000018,
+      "received_elapsed_ns": "1018000000",
+      "source": "polar_sdk",
+      "event_type": "search_error",
+      "callback_variant": "searchForDevice.error",
+      "device_id": null,
+      "payload": {
+        "subscription_id": "search-2",
+        "error": {
+          "root_id": 0,
+          "nodes": [
+            {
+              "id": 0,
+              "class_name": "java.lang.IllegalStateException",
+              "message": null,
+              "localized_message": null,
+              "stack_trace": [],
+              "cause_id": null,
+              "suppressed_ids": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 20,
+      "received_utc_ms": 1700000000019,
+      "received_elapsed_ns": "1019000000",
+      "source": "diagnostic",
+      "event_type": "search_ended",
+      "callback_variant": "searchForDevice.cancel",
+      "device_id": null,
+      "payload": {
+        "subscription_id": "search-3",
+        "reason": "timeout",
+        "error": {
+          "root_id": 0,
+          "nodes": [
+            {
+              "id": 0,
+              "class_name": "kotlinx.coroutines.TimeoutCancellationException",
+              "message": "synthetic timeout",
+              "localized_message": "synthetic timeout",
+              "stack_trace": [],
+              "cause_id": null,
+              "suppressed_ids": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 21,
+      "received_utc_ms": 1700000000020,
+      "received_elapsed_ns": "1020000000",
+      "source": "app_command",
+      "event_type": "command_requested",
+      "callback_variant": "execute",
+      "device_id": null,
+      "payload": {
+        "command_id": "command-1",
+        "name": "start",
+        "argument": null,
+        "route": false
+      }
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 22,
+      "received_utc_ms": 1700000000021,
+      "received_elapsed_ns": "1021000000",
+      "source": "diagnostic",
+      "event_type": "capture_started",
+      "callback_variant": "diagnostic.start",
+      "device_id": null,
+      "payload": {}
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 23,
+      "received_utc_ms": 1700000000022,
+      "received_elapsed_ns": "1022000000",
+      "source": "diagnostic",
+      "event_type": "capture_stopped",
+      "callback_variant": "diagnostic.stop",
+      "device_id": null,
+      "payload": {}
+    },
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "sequence": 24,
+      "received_utc_ms": 1700000000023,
+      "received_elapsed_ns": "1023000000",
+      "source": "diagnostic",
+      "event_type": "capture_fault",
+      "callback_variant": "diagnostic.fault",
+      "device_id": null,
+      "payload": {
+        "code": "queue_overflow",
+        "lost_count": 1,
+        "error": null
+      }
+    }
+  ],
+  "processing": [
+    {
+      "schema_version": 1,
+      "capture_id": "synthetic-capture",
+      "process_run_id": "synthetic-process",
+      "processing_sequence": 1,
+      "input_sequence": 21,
+      "processed_utc_ms": 1700000000030,
+      "processed_elapsed_ns": "1030000000",
+      "session_id": "synthetic-session",
+      "command_id": "command-1",
+      "outcome": "committed",
+      "error": null
+    }
+  ],
+  "manifest": {
+    "schema_version": 1,
+    "capture_id": "empty-synthetic-capture",
+    "process_run_id": "synthetic-process",
+    "app_version": "0.0.1",
+    "core_version": "contract-example-only",
+    "polar_sdk_version": "8.4.0",
+    "phone": {
+      "manufacturer": "synthetic",
+      "model": "synthetic",
+      "android_api": 34,
+      "android_release": "14"
+    },
+    "enabled_features": [
+      "FEATURE_HR",
+      "FEATURE_BATTERY_INFO",
+      "FEATURE_DEVICE_INFO"
+    ],
+    "firmware": [],
+    "started_utc_ms": 1700000000000,
+    "started_elapsed_ns": "1000000000",
+    "ended_utc_ms": 1700000000001,
+    "ended_elapsed_ns": "1001000000",
+    "state": "complete",
+    "initial_configuration": {
+      "session_state": "preparation",
+      "session_id": null,
+      "connected_device_id": null,
+      "route_enabled": false,
+      "automatic_reconnection": true,
+      "hr_stale_after_ms": 5000,
+      "active_ms": 0,
+      "last_hr": null,
+      "last_hr_received_elapsed_ns": null
+    },
+    "checkpoint": {
+      "last_committed_sequence": null,
+      "last_committed_processing_sequence": null,
+      "received_events": 0,
+      "saved_events": 0,
+      "known_lost_events": 0,
+      "unknown_tail": false
+    },
+    "files": {
+      "events.jsonl": {
+        "bytes": 0,
+        "records": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "processing.jsonl": {
+        "bytes": 0,
+        "records": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  }
+}

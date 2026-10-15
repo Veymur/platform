@@ -1,0 +1,1576 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Polar diagnostic event v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "capture_id": {
+      "type": "string"
+    },
+    "process_run_id": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "received_utc_ms": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "received_elapsed_ns": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,18})$"
+    },
+    "source": {
+      "enum": [
+        "polar_sdk",
+        "app_command",
+        "diagnostic"
+      ]
+    },
+    "event_type": {
+      "type": "string"
+    },
+    "callback_variant": {
+      "type": "string"
+    },
+    "device_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "capture_id",
+    "process_run_id",
+    "sequence",
+    "received_utc_ms",
+    "received_elapsed_ns",
+    "source",
+    "event_type",
+    "callback_variant",
+    "device_id",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "bluetooth"
+        },
+        "callback_variant": {
+          "const": "blePowerStateChanged"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "powered": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "powered"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "connecting"
+        },
+        "callback_variant": {
+          "const": "deviceConnecting"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "info": {
+              "type": "object",
+              "properties": {
+                "deviceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "rssi": {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isConnectable": {
+                  "type": "boolean"
+                },
+                "hasHeartRateService": {
+                  "type": "boolean"
+                },
+                "hasFileSystemService": {
+                  "type": "boolean"
+                },
+                "hasSAGRFCFileSystem": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "deviceId",
+                "address",
+                "rssi",
+                "name",
+                "isConnectable",
+                "hasHeartRateService",
+                "hasFileSystemService",
+                "hasSAGRFCFileSystem"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "info"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "connected"
+        },
+        "callback_variant": {
+          "const": "deviceConnected"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "info": {
+              "type": "object",
+              "properties": {
+                "deviceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "rssi": {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isConnectable": {
+                  "type": "boolean"
+                },
+                "hasHeartRateService": {
+                  "type": "boolean"
+                },
+                "hasFileSystemService": {
+                  "type": "boolean"
+                },
+                "hasSAGRFCFileSystem": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "deviceId",
+                "address",
+                "rssi",
+                "name",
+                "isConnectable",
+                "hasHeartRateService",
+                "hasFileSystemService",
+                "hasSAGRFCFileSystem"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "info"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "disconnected"
+        },
+        "callback_variant": {
+          "const": "deviceDisconnected.legacy"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "info": {
+              "type": "object",
+              "properties": {
+                "deviceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "rssi": {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isConnectable": {
+                  "type": "boolean"
+                },
+                "hasHeartRateService": {
+                  "type": "boolean"
+                },
+                "hasFileSystemService": {
+                  "type": "boolean"
+                },
+                "hasSAGRFCFileSystem": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "deviceId",
+                "address",
+                "rssi",
+                "name",
+                "isConnectable",
+                "hasHeartRateService",
+                "hasFileSystemService",
+                "hasSAGRFCFileSystem"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "info"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "disconnected"
+        },
+        "callback_variant": {
+          "const": "deviceDisconnected.diagnostics"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "info": {
+              "type": "object",
+              "properties": {
+                "deviceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "rssi": {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isConnectable": {
+                  "type": "boolean"
+                },
+                "hasHeartRateService": {
+                  "type": "boolean"
+                },
+                "hasFileSystemService": {
+                  "type": "boolean"
+                },
+                "hasSAGRFCFileSystem": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "deviceId",
+                "address",
+                "rssi",
+                "name",
+                "isConnectable",
+                "hasHeartRateService",
+                "hasFileSystemService",
+                "hasSAGRFCFileSystem"
+              ],
+              "additionalProperties": false
+            },
+            "diagnostics": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "enum": [
+                    "CONNECTION_LOST",
+                    "INSUFFICIENT_ENCRYPTION",
+                    "INSUFFICIENT_AUTHENTICATION",
+                    "ENCRYPTION_TIMEOUT",
+                    "PAIRING_INFORMATION_REMOVED",
+                    "PAIRING_NEGOTIATION_FAILED",
+                    "SERVICE_DISCOVERY_FAILED",
+                    "GATT_ERROR",
+                    "PEER_TERMINATED",
+                    "DEVICE_COMMAND",
+                    "UNKNOWN"
+                  ]
+                },
+                "recoveryAction": {
+                  "enum": [
+                    "NONE",
+                    "RETRY_OPERATION",
+                    "RETRY_CONNECTION",
+                    "REMOVE_PAIRING_AND_PAIR_AGAIN",
+                    "RETRY_PAIRING"
+                  ]
+                },
+                "gattStatus": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -2147483648,
+                      "maximum": 2147483647
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "deviceCommand": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "RESTART",
+                        "FACTORY_RESET",
+                        "WAREHOUSE_SLEEP",
+                        "HIBERNATE",
+                        "TURN_OFF"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "reason",
+                "recoveryAction",
+                "gattStatus",
+                "deviceCommand"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "info",
+            "diagnostics"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "hr"
+        },
+        "callback_variant": {
+          "const": "hrNotificationReceived"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "hr": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "correctedHr": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "ppgQuality": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "rrs": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            },
+            "rrsMs": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            },
+            "rrAvailable": {
+              "type": "boolean"
+            },
+            "contactStatus": {
+              "type": "boolean"
+            },
+            "contactStatusSupported": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "hr",
+            "correctedHr",
+            "ppgQuality",
+            "rrs",
+            "rrsMs",
+            "rrAvailable",
+            "contactStatus",
+            "contactStatusSupported"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "battery_level"
+        },
+        "callback_variant": {
+          "const": "batteryLevelReceived"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "level"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "battery_charging"
+        },
+        "callback_variant": {
+          "const": "batteryChargingStatusReceived"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "chargingStatus": {
+              "enum": [
+                "UNKNOWN",
+                "CHARGING",
+                "DISCHARGING_ACTIVE",
+                "DISCHARGING_INACTIVE"
+              ]
+            }
+          },
+          "required": [
+            "chargingStatus"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "power_sources"
+        },
+        "callback_variant": {
+          "const": "powerSourcesStateReceived"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "batteryPresent": {
+              "enum": [
+                "NOT_PRESENT",
+                "PRESENT",
+                "UNKNOWN"
+              ]
+            },
+            "wiredExternalPowerConnected": {
+              "enum": [
+                "NOT_CONNECTED",
+                "CONNECTED",
+                "UNKNOWN",
+                "RESERVED_FOR_FUTURE_USE"
+              ]
+            },
+            "wirelessExternalPowerConnected": {
+              "enum": [
+                "NOT_CONNECTED",
+                "CONNECTED",
+                "UNKNOWN",
+                "RESERVED_FOR_FUTURE_USE"
+              ]
+            }
+          },
+          "required": [
+            "batteryPresent",
+            "wiredExternalPowerConnected",
+            "wirelessExternalPowerConnected"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "device_info"
+        },
+        "callback_variant": {
+          "const": "disInformationReceived.uuid"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "uuid": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "uuid",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "device_info"
+        },
+        "callback_variant": {
+          "const": "disInformationReceived.key"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "feature_ready"
+        },
+        "callback_variant": {
+          "const": "bleSdkFeatureReady"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "feature": {
+              "type": "string",
+              "pattern": "^FEATURE_[A-Z0-9_]+$"
+            }
+          },
+          "required": [
+            "feature"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "features_readiness"
+        },
+        "callback_variant": {
+          "const": "bleSdkFeaturesReadiness"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "ready": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^FEATURE_[A-Z0-9_]+$"
+              }
+            },
+            "unavailable": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^FEATURE_[A-Z0-9_]+$"
+              }
+            }
+          },
+          "required": [
+            "ready",
+            "unavailable"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "thermometer"
+        },
+        "callback_variant": {
+          "const": "htsNotificationReceived"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "celsius": {
+              "type": "object",
+              "properties": {
+                "ieee754_hex": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}$"
+                }
+              },
+              "required": [
+                "ieee754_hex"
+              ],
+              "additionalProperties": false
+            },
+            "fahrenheit": {
+              "type": "object",
+              "properties": {
+                "ieee754_hex": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}$"
+                }
+              },
+              "required": [
+                "ieee754_hex"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "celsius",
+            "fahrenheit"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "companion_appeared"
+        },
+        "callback_variant": {
+          "const": "polarCompanionDeviceAppeared"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "companion_disappeared"
+        },
+        "callback_variant": {
+          "const": "polarCompanionDeviceDisappeared"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "search_result"
+        },
+        "callback_variant": {
+          "const": "searchForDevice.collect"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "subscription_id": {
+              "type": "string"
+            },
+            "info": {
+              "type": "object",
+              "properties": {
+                "deviceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "rssi": {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isConnectable": {
+                  "type": "boolean"
+                },
+                "hasHeartRateService": {
+                  "type": "boolean"
+                },
+                "hasFileSystemService": {
+                  "type": "boolean"
+                },
+                "hasSAGRFCFileSystem": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "deviceId",
+                "address",
+                "rssi",
+                "name",
+                "isConnectable",
+                "hasHeartRateService",
+                "hasFileSystemService",
+                "hasSAGRFCFileSystem"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "subscription_id",
+            "info"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "search_completed"
+        },
+        "callback_variant": {
+          "const": "searchForDevice.complete"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "subscription_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subscription_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "search_error"
+        },
+        "callback_variant": {
+          "const": "searchForDevice.error"
+        },
+        "source": {
+          "const": "polar_sdk"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "subscription_id": {
+              "type": "string"
+            },
+            "error": {
+              "type": "object",
+              "properties": {
+                "root_id": {
+                  "const": 0
+                },
+                "nodes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "class_name": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "localized_message": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "stack_trace": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "declaring_class": {
+                              "type": "string"
+                            },
+                            "method_name": {
+                              "type": "string"
+                            },
+                            "file_name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "line_number": {
+                              "type": "integer",
+                              "minimum": -2147483648,
+                              "maximum": 2147483647
+                            },
+                            "native_method": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "declaring_class",
+                            "method_name",
+                            "file_name",
+                            "line_number",
+                            "native_method"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "cause_id": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "suppressed_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "class_name",
+                      "message",
+                      "localized_message",
+                      "stack_trace",
+                      "cause_id",
+                      "suppressed_ids"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "root_id",
+                "nodes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "subscription_id",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "search_ended"
+        },
+        "callback_variant": {
+          "const": "searchForDevice.cancel"
+        },
+        "source": {
+          "const": "diagnostic"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "subscription_id": {
+              "type": "string"
+            },
+            "reason": {
+              "enum": [
+                "timeout",
+                "cancelled"
+              ]
+            },
+            "error": {
+              "type": "object",
+              "properties": {
+                "root_id": {
+                  "const": 0
+                },
+                "nodes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "class_name": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "localized_message": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "stack_trace": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "declaring_class": {
+                              "type": "string"
+                            },
+                            "method_name": {
+                              "type": "string"
+                            },
+                            "file_name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "line_number": {
+                              "type": "integer",
+                              "minimum": -2147483648,
+                              "maximum": 2147483647
+                            },
+                            "native_method": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "declaring_class",
+                            "method_name",
+                            "file_name",
+                            "line_number",
+                            "native_method"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "cause_id": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "suppressed_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "class_name",
+                      "message",
+                      "localized_message",
+                      "stack_trace",
+                      "cause_id",
+                      "suppressed_ids"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "root_id",
+                "nodes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "subscription_id",
+            "reason",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "command_requested"
+        },
+        "callback_variant": {
+          "const": "execute"
+        },
+        "source": {
+          "const": "app_command"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "type": "string"
+            },
+            "name": {
+              "enum": [
+                "search",
+                "cancelSearch",
+                "connect",
+                "start",
+                "pause",
+                "resume",
+                "finish",
+                "exportLatest",
+                "startDiagnostic",
+                "stopDiagnostic",
+                "exportDiagnostic",
+                "deleteDiagnostic"
+              ]
+            },
+            "argument": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "route": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "command_id",
+            "name",
+            "argument",
+            "route"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "capture_started"
+        },
+        "callback_variant": {
+          "const": "diagnostic.start"
+        },
+        "source": {
+          "const": "diagnostic"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "capture_stopped"
+        },
+        "callback_variant": {
+          "const": "diagnostic.stop"
+        },
+        "source": {
+          "const": "diagnostic"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "const": "capture_fault"
+        },
+        "callback_variant": {
+          "const": "diagnostic.fault"
+        },
+        "source": {
+          "const": "diagnostic"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                "queue_overflow",
+                "serialization_failed",
+                "write_failed",
+                "size_limit",
+                "duration_limit"
+              ]
+            },
+            "lost_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "root_id": {
+                      "const": 0
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "class_name": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "localized_message": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "stack_trace": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "declaring_class": {
+                                  "type": "string"
+                                },
+                                "method_name": {
+                                  "type": "string"
+                                },
+                                "file_name": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "line_number": {
+                                  "type": "integer",
+                                  "minimum": -2147483648,
+                                  "maximum": 2147483647
+                                },
+                                "native_method": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "declaring_class",
+                                "method_name",
+                                "file_name",
+                                "line_number",
+                                "native_method"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "cause_id": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "suppressed_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "class_name",
+                          "message",
+                          "localized_message",
+                          "stack_trace",
+                          "cause_id",
+                          "suppressed_ids"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "root_id",
+                    "nodes"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "lost_count",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event_type",
+        "callback_variant",
+        "source",
+        "payload"
+      ]
+    }
+  ]
+}

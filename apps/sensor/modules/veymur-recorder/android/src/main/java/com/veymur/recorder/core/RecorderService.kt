@@ -14,7 +14,6 @@ import android.location.LocationManager
 import android.os.*
 import com.polar.sdk.api.*
 import com.polar.sdk.api.model.*
-import com.polar.androidcommunications.api.ble.model.DisInfo
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
@@ -42,6 +41,11 @@ class RecorderService : Service() {
     companion object { private val revisions = AtomicLong() }
     private val clock = RecordingClock { SystemClock.elapsedRealtime() }
     private lateinit var api: PolarBleApi
+    private val polarInputs: PolarInputBoundary = PolarInputBoundary(
+        utcNow = { System.currentTimeMillis() }, elapsedNowNs = { SystemClock.elapsedRealtimeNanos() },
+        dispatch = ::enqueuePolarInput)
+    private val polarCallbacks = PolarSdkCallbacks(polarInputs)
+    private val polarSearch = PolarSearchInput(polarInputs)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var searchJob: Job? = null
     private var lastActivityVisible: Boolean? = null
@@ -97,47 +101,71 @@ class RecorderService : Service() {
             PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO,
             PolarBleApi.PolarBleSdkFeature.FEATURE_DEVICE_INFO))
         api.setAutomaticReconnection(true)
-        api.setApiCallback(object : PolarBleApiCallback() {
-            override fun blePowerStateChanged(powered: Boolean) = enqueue {
-                if (!powered) snapshot = snapshot.copy(status = "Bluetooth disabled", connected = null, hr = null)
-                record("bluetooth", JSONObject().put("powered", powered))
+        api.setApiCallback(polarCallbacks)
+    }
+    private fun enqueuePolarInput(delivery: PolarInputDelivery): Unit = enqueue {
+        polarInputs.process(delivery, { session }, ::processPolarInput)
+    }
+    /** Shared processing entry: it consumes owned input, never an SDK callback object. */
+    private fun processPolarInput(event: PolarInputEvent): Boolean {
+        val payload = event.payload()
+        when (event.eventType) {
+            "bluetooth" -> {
+                if (!payload.getBoolean("powered")) snapshot = snapshot.copy(status = "Bluetooth disabled", connected = null, hr = null)
+                record("bluetooth", JSONObject().put("powered", payload.getBoolean("powered")))
             }
-            override fun deviceConnecting(info: PolarDeviceInfo) = enqueue { snapshot = snapshot.copy(status = "Connecting to ${info.deviceId}…") }
-            override fun deviceConnected(info: PolarDeviceInfo) = enqueue {
-                snapshot = snapshot.copy(connected = info.deviceId, status = "Sensor connected")
-                record("connected", JSONObject().put("device", info.deviceId))
+            "connecting" -> snapshot = snapshot.copy(status = "Connecting to ${event.deviceId}…")
+            "connected" -> {
+                snapshot = snapshot.copy(connected = event.deviceId, status = "Sensor connected")
+                record("connected", JSONObject().put("device", event.deviceId))
             }
-            override fun deviceDisconnected(info: PolarDeviceInfo, diagnostics: PolarBleDisconnectInfo) = disconnected(info)
-            @Suppress("DEPRECATION")
-            override fun deviceDisconnected(info: PolarDeviceInfo) = disconnected(info)
-            override fun batteryLevelReceived(identifier: String, level: Int) = enqueue {
-                snapshot = snapshot.copy(battery = level)
-                record("sensor_battery", JSONObject().put("percent", level))
+            "disconnected" -> {
+                snapshot = snapshot.copy(connected = null, hr = null, status = "Connection lost. The SDK is reconnecting")
+                record("disconnected", JSONObject().put("device", event.deviceId))
             }
-            override fun disInformationReceived(identifier: String, uuid: java.util.UUID, value: String) = enqueue {
-                deviceDetails[uuid.toString()] = value
-                record("device_info", JSONObject().put("uuid", uuid).put("value", value))
+            "battery_level" -> {
+                snapshot = snapshot.copy(battery = payload.getInt("level"))
+                record("sensor_battery", JSONObject().put("percent", payload.getInt("level")))
             }
-            override fun disInformationReceived(identifier: String, disInfo: DisInfo) = enqueue {
-                deviceDetails["dis"] = disInfo.toString()
-                record("device_info", JSONObject().put("details", disInfo.toString()))
+            "device_info" -> when (event.callbackVariant) {
+                "disInformationReceived.uuid" -> {
+                    deviceDetails[payload.getString("uuid")] = payload.getString("value")
+                    record("device_info", payload)
+                }
+                "disInformationReceived.key" -> {
+                    // Preserve the existing session export's display field; diagnostic input is structured.
+                    val details = "DisInfo(key=${payload.getString("key")}, value=${payload.getString("value")})"
+                    deviceDetails["dis"] = details
+                    record("device_info", JSONObject().put("details", details))
+                }
+                else -> return false
             }
-            override fun htsNotificationReceived(identifier: String, data: PolarHealthThermometerData) { /* Not part of this prototype. */ }
-            override fun hrNotificationReceived(identifier: String, data: PolarHrData.PolarHrSample) = enqueue {
-                val now = SystemClock.elapsedRealtime()
-                snapshot = snapshot.copy(hr = data.hr.takeIf { it > 0 }, lastHrElapsed = now)
+            "hr" -> {
+                snapshot = snapshot.copy(hr = payload.getInt("hr").takeIf { it > 0 },
+                    lastHrElapsed = event.receivedElapsedNs / 1_000_000)
                 if (snapshot.recording && !snapshot.paused) {
-                    record("hr", JSONObject().put("bpm", data.hr).put("contact", data.contactStatus)
-                        .put("contact_supported", data.contactStatusSupported).put("ppg_quality", data.ppgQuality)
+                    record("hr", JSONObject().put("bpm", payload.getInt("hr")).put("contact", payload.getBoolean("contactStatus"))
+                        .put("contact_supported", payload.getBoolean("contactStatusSupported")).put("ppg_quality", payload.getInt("ppgQuality"))
                         .put("active_ms", clock.activeMs()).put("timestamp_source", "phone_receipt"))
                     snapshot = snapshot.copy(hrCount = snapshot.hrCount + 1)
                 }
             }
-        })
-    }
-    private fun disconnected(info: PolarDeviceInfo) = enqueue {
-        snapshot = snapshot.copy(connected = null, hr = null, status = "Connection lost. The SDK is reconnecting")
-        record("disconnected", JSONObject().put("device", info.deviceId))
+            "search_result" -> {
+                val info = payload.getJSONObject("info")
+                if (!info.getString("name").contains("Sense", ignoreCase = true) || !info.getBoolean("isConnectable")) return false
+                val device = PolarDeviceInfo(info.getString("deviceId"), info.getString("address"), info.getInt("rssi"),
+                    info.getString("name"), info.getBoolean("isConnectable"), info.getBoolean("hasHeartRateService"),
+                    info.getBoolean("hasFileSystemService"), info.getBoolean("hasSAGRFCFileSystem"))
+                snapshot = snapshot.copy(devices = (snapshot.devices + device).distinctBy { it.deviceId })
+            }
+            "search_error" -> snapshot = snapshot.copy(errorCode = "DISCOVERY_ERROR", status = "Sensor discovery failed; retry")
+            "search_ended" -> {
+                if (payload.getString("reason") != "timeout") return false
+                snapshot = snapshot.copy(status = if (snapshot.devices.isEmpty()) "Sensor not found. Turn it on and search again" else "Select your sensor")
+            }
+            else -> return false // Diagnostic-only callbacks retain their input without adding recorder behavior.
+        }
+        return true
     }
     private val tick = object : Runnable {
         override fun run() {
@@ -177,19 +205,20 @@ class RecorderService : Service() {
         if (snapshot.recording || starting) throw RecorderError("INVALID_STATE", "Recording is active")
         searchJob?.cancel()
         enqueue { snapshot = snapshot.copy(devices = emptyList(), status = "Searching for Verity Sense…") }
+        val subscriptionId = java.util.UUID.randomUUID().toString()
         searchJob = scope.launch {
             try {
                 withTimeout(15000) {
-                    api.searchForDevice().collect { info ->
-                        if (info.name.contains("Sense", ignoreCase = true) && info.isConnectable) enqueue {
-                            snapshot = snapshot.copy(devices = (snapshot.devices + info).distinctBy { it.deviceId })
-                        }
-                    }
+                    api.searchForDevice().collect { info -> polarSearch.result(subscriptionId, info) }
+                    polarSearch.completed(subscriptionId)
                 }
-            } catch (_: TimeoutCancellationException) {
-                enqueue { snapshot = snapshot.copy(status = if (snapshot.devices.isEmpty()) "Sensor not found. Turn it on and search again" else "Select your sensor") }
-            } catch (_: CancellationException) { /* Explicit cancel. */ }
-            catch (e: Exception) { enqueue { snapshot = snapshot.copy(errorCode = "DISCOVERY_ERROR", status = "Sensor discovery failed; retry") } }
+            } catch (error: TimeoutCancellationException) {
+                polarSearch.cancelled(subscriptionId, "timeout", error)
+            } catch (error: CancellationException) {
+                polarSearch.cancelled(subscriptionId, "cancelled", error)
+            } catch (error: Exception) {
+                polarSearch.error(subscriptionId, error)
+            }
         }
     }
     private fun cancelSearch() { searchJob?.cancel(); enqueue { snapshot = snapshot.copy(status = "Search stopped") } }

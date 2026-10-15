@@ -28,6 +28,10 @@ dependencies {
   androidTestImplementation 'androidx.sqlite:sqlite:2.4.0'
 }\n`;
     }
+    const polarTestDependency = "androidTestImplementation 'com.github.polarofficial:polar-ble-sdk:8.4.0'";
+    if (!config.modResults.contents.includes(polarTestDependency)) {
+      config.modResults.contents += `\ndependencies { ${polarTestDependency} }\n`;
+    }
     return config;
   });
   config = withProjectBuildGradle(config, (config) => {

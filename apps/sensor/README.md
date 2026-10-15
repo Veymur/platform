@@ -2,6 +2,9 @@
 
 Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=3/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, start/pause/resume/confirmed finish, diagnostic ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder-bridge-contract.md).
 
+
+Polar diagnostic stages D1–D2 now add explicit immutable SDK input events before recorder processing, separate receipt/worker timing, all 16 base callback signatures and unfiltered discovery results. Diagnostic persistence and UI capture controls remain D3–D5 work: the current Export last session button still produces the existing session ZIP. The native test sink is disabled by default. See the [input contract](../../docs/polar-diagnostic-contract.md) and [implementation checks](../../docs/polar-diagnostic-implementation.md). Rebuild native after these changes; existing stage-8 APKs do not contain this boundary.
+
 The Stage 0 recorder and stage 2 dependency probe remain separately installed/testable:
 
 | App | Android applicationId |
@@ -138,7 +141,7 @@ Start with no generated host or build outputs. Inspect `node_modules/expo/androi
 
 Database tables, user_version=1, key wrapping and diagnostic ZIP schema_version=1 are unchanged; no schema migration or old-data import was introduced. Keystore aliases and filenames remain scoped to the new applicationId. At stage 4, finalization/recovery used separate SQL operations; stage 5 makes transitions transactional (see the bridge contract). Checkpoint frequency and callback loss-window limitations still require hardware measurements.
 
-The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-diagnostic-v3`. ZIP metadata/CSV were not changed to add this identity.
+The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-polar-input-d2`; bridge contract remains version 3. ZIP metadata/CSV were not changed to add this identity.
 
 Run storage/clock checks on a **dedicated test emulator** with the environment above:
 

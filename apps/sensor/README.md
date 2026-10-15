@@ -1,6 +1,33 @@
 # Veymur Sensor — Android diagnostic recorder
 
-Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=3/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, start/pause/resume/confirmed finish, diagnostic ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder-bridge-contract.md).
+Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=5/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, start/pause/resume/confirmed finish, session ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder/recorder-bridge-contract.md).
+
+
+Polar diagnostic stages D1–D2 now add explicit immutable SDK input events before recorder processing, separate receipt/worker timing, all 16 base callback signatures and unfiltered discovery results. D3 provides the native encrypted journal and D4 adds explicit capture controls; D5 adds capture export and deletion: the current Export last session button still produces the existing session ZIP. The native test sink is disabled by default. See the [input contract](../../docs/diagnostic/polar-diagnostic-contract.md) and [implementation checks](../../docs/diagnostic/polar-diagnostic-implementation.md). Rebuild native after these changes; existing stage-8 APKs do not contain this boundary.
+
+D3 adds `DiagnosticJournal`/`DiagnosticCapture` with a separate SQLCipher database, Keystore wrapping key and writer thread, bounded non-blocking offers, atomic checkpoints, explicit losses/limits, interrupted recovery and native deletion. Capture remains off until explicitly enabled. D4 exposes `startDiagnostic`/`stopDiagnostic` and a compact status through bridge v5; JS never receives raw callbacks. Capture owns the foreground service even without a session. Finish keeps capture active; stopping capture leaves a session active. Stop acknowledges the drained, committed queue or returns `DIAGNOSTIC_ERROR`. Capture does not start discovery or initialize Polar. Reopening detects interrupted captures without resuming them. See [D4 checks and limits](../../docs/diagnostic/polar-diagnostic-d4-implementation.md). The provisional 64-record/250-ms commit policy has emulator measurements; Galaxy A23 measurements remain pending. See [D3 behavior, commands, measurements and limitations](../../docs/diagnostic/polar-diagnostic-d3-implementation.md).
+
+D5 adds a native streaming capture ZIP exporter, capture list/selection, confirmed deletion and a 24-hour cache export TTL. Stop active capture explicitly before export. The ZIP is **unencrypted** and contains HR/device identifiers; use the system share dialog to choose where to save it. This is separate from Export last session. Rebuild for bridge v5/core `stage0-777a33b-polar-replay-d7`. See [D5 behavior, verification and limits](../../docs/diagnostic/polar-diagnostic-d5-implementation.md).
+
+D7 adds deterministic native replay tests using the live Polar processor and session control, virtual UTC/monotonic time, an in-memory transaction adapter and separately authored expectations. Capture now includes `start/pause/resume/finish` command acceptance and terminal results. Bridge remains v5; rebuild for core `stage0-777a33b-polar-replay-d7`. Old captures retain their incomplete replay context; see [replay commands and limits](diagnostics/fixtures/README.md#native-deterministic-replay) and [D7 verification](../../docs/diagnostic/polar-diagnostic-d7-implementation.md).
+
+Validate a copied capture ZIP independently on your computer with Python (standard library only):
+
+```bash
+python3 scripts/validate_polar_diagnostic.py /path/to/capture.zip
+npm run test:diagnostics
+```
+
+Exit 0 means the archive is structurally valid; read `state`, losses and `unknown_tail` in the JSON report to determine completeness. `replay_ready:false` remains explicit until D6–D7. Unknown schema, checksum errors, broken references or malformed ZIP return exit 1. Raw data is not printed or uploaded.
+
+D6 adds `scripts/prepare_polar_fixture.py` and a [reviewed synthetic fixture catalogue](diagnostics/fixtures/README.md), with source SHA-256, explicit prefix context, consistent pseudonyms, UTC policy and separately authored expectations. Hardware fixtures remain pending. The tool never changes the original ZIP, overwrites output or stages data in Git. Native code/bridge remain D5/v5.
+
+```bash
+python3 scripts/prepare_polar_fixture.py prepare /private/capture.zip --kind synthetic --scenario hr-gap --output /private/hr-gap.fixture.json
+python3 scripts/prepare_polar_fixture.py check /private/hr-gap.fixture.json --source /private/capture.zip
+```
+
+D6 verifies fixture preparation; the native replay engine and its expected-result assertions remain D7. See [D6 commands, results and limits](../../docs/diagnostic/polar-diagnostic-d6-implementation.md).
 
 The Stage 0 recorder and stage 2 dependency probe remain separately installed/testable:
 
@@ -63,9 +90,13 @@ adb -s emulator-5554 shell am start -W -a android.intent.action.VIEW \
 adb -s emulator-5554 logcat -d -s ReactNativeJS:I '*:S'
 ```
 
-The current screen is “Veymur · recording validation”: storage becomes ready, and a disconnected sensor shows “No current heart rate”. The typed handshake requires contractVersion=3/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
+The current screen is “Veymur · recording validation”: storage becomes ready, and a disconnected sensor shows “No current heart rate”. The typed handshake requires contractVersion=5/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
 
 An incompatible native binary produces a rebuild/reinstall error. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, registration, permissions or plugin/config changes require prebuild and a new installation. JS reload updates only JS. This **debug development APK** uses Metro; it supports the JS reload scenarios. It is separate from the autonomous diagnostic variant below.
+
+## D8 hardware validation
+
+The [H01–H07 protocol](../../docs/diagnostic/polar-diagnostic-d8-hardware-protocol.md) covers Galaxy A23 / Android 14 and Polar Verity Sense capture/session comparison, locking, JS detach, Bluetooth recovery, offline operation, interruption and paired battery/load measurements. The [D8 preparation report](../../docs/diagnostic/polar-diagnostic-d8-implementation.md) records the offline APK hash and actual results. Hardware validation is pending device access; emulator results do not close it. Preserve an existing installation and verify its signing certificate before replacing it.
 
 ## Autonomous diagnostic APK — embedded JS
 
@@ -138,7 +169,7 @@ Start with no generated host or build outputs. Inspect `node_modules/expo/androi
 
 Database tables, user_version=1, key wrapping and diagnostic ZIP schema_version=1 are unchanged; no schema migration or old-data import was introduced. Keystore aliases and filenames remain scoped to the new applicationId. At stage 4, finalization/recovery used separate SQL operations; stage 5 makes transitions transactional (see the bridge contract). Checkpoint frequency and callback loss-window limitations still require hardware measurements.
 
-The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-diagnostic-v3`. ZIP metadata/CSV were not changed to add this identity.
+The module manifest declares the private service, Bluetooth/location/notification/foreground/wake-lock permissions and `${applicationId}.exports` FileProvider. XML resources preserve export scope and backup exclusions; app config/plugin disable backup and bind data-extraction rules to the host. Core identity is embedded in APK manifest metadata `com.veymur.recorder.CORE_VERSION=stage0-777a33b-polar-replay-d7`; bridge contract is version 5. ZIP metadata/CSV were not changed to add this identity.
 
 Run storage/clock checks on a **dedicated test emulator** with the environment above:
 
@@ -170,4 +201,4 @@ Both ZIPs passed the unchanged Python analyzer and CRC checks. Full stage 4 comm
 
 Commands/results, APK identities and clean-checkout details are recorded in the [stage 3 report](../../docs/stage-0/react-native-minimal-app-validation.ru.md) and [recorder validation](../../docs/recorder-validation.md). Migration reports under `docs/stage-0/` and local APK/log artifacts are ignored by Git according to repository preferences.
 
-Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, real BLE/GPS, sustained foreground recording, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Keystore/storage recovery has emulator evidence only. Stage 5 now implements commands, commit acknowledgments and snapshots; final checks are in [recorder validation](../../docs/recorder-validation.md). Stage 6 now provides diagnostic controls/permissions; [UI verification](../../docs/recorder-diagnostic-ui.md) documents scope. Next: migration stage 7, compare this RN recorder on the real Galaxy A23/Polar sensor, including a locally bundled offline APK.
+Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings in the inherited tooling graph, and the Linux RN DevTools SUID configuration issue. These do not constitute release approval. No physical Galaxy A23, real BLE/GPS, sustained foreground recording, offline bundle, battery, 16 KB runtime or Swift/iOS recorder validation is claimed here. Keystore/storage recovery has emulator evidence only. Stage 5 now implements commands, commit acknowledgments and snapshots; final checks are in [recorder validation](../../docs/recorder-validation.md). Stage 6 now provides diagnostic controls/permissions; [UI verification](../../docs/recorder/recorder-diagnostic-ui.md) documents scope. Next: migration stage 7, compare this RN recorder on the real Galaxy A23/Polar sensor, including a locally bundled offline APK.

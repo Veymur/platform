@@ -1,0 +1,102 @@
+{
+  "expectations_version": 1,
+  "fixture": "native-interrupted.fixture.json",
+  "basis": [
+    {
+      "id": "injection",
+      "reference": "modules/veymur-recorder/tests/android/com/veymur/recorder/core/DiagnosticExportTest.kt::interruptedExportPreservesUnknownEndAndMissingProcessing",
+      "reason": "One Bluetooth-off input is committed without processing before recovery."
+    },
+    {
+      "id": "contract",
+      "reference": "diagnostics/schema/manifest-v1.schema.json and D3 recovery contract",
+      "reason": "An interrupted capture has unknown tail/received count/end; lack of processing is not successful processing."
+    }
+  ],
+  "data_assertions": [
+    {
+      "path": "events",
+      "operation": "length",
+      "value": 1,
+      "basis": "injection"
+    },
+    {
+      "path": "processing",
+      "operation": "length",
+      "value": 0,
+      "basis": "injection"
+    },
+    {
+      "path": "events.0.sequence",
+      "operation": "equals",
+      "value": 7,
+      "basis": "injection"
+    },
+    {
+      "path": "events.0.payload.powered",
+      "operation": "equals",
+      "value": false,
+      "basis": "injection"
+    },
+    {
+      "path": "provenance.source_completeness.state",
+      "operation": "equals",
+      "value": "interrupted",
+      "basis": "contract"
+    },
+    {
+      "path": "provenance.source_completeness.checkpoint.received_events",
+      "operation": "equals",
+      "value": null,
+      "basis": "contract"
+    },
+    {
+      "path": "provenance.source_completeness.checkpoint.unknown_tail",
+      "operation": "equals",
+      "value": true,
+      "basis": "contract"
+    },
+    {
+      "path": "capture_bounds.ended_elapsed_ns",
+      "operation": "equals",
+      "value": null,
+      "basis": "contract"
+    },
+    {
+      "path": "completeness.retained_unprocessed_inputs",
+      "operation": "equals",
+      "value": 1,
+      "basis": "contract"
+    },
+    {
+      "path": "provenance.source_completeness.checkpoint.last_error_code",
+      "operation": "equals",
+      "value": "unclean_shutdown",
+      "basis": "contract"
+    }
+  ],
+  "replay_expectations": [
+    {
+      "basis": "contract",
+      "condition": "D7 loads this incomplete fixture",
+      "expected": "Report the unknown tail and missing observed processing. Do not claim observed recorder output, invent an end time, or fill missing data with zero."
+    }
+  ],
+  "observed_processing_is_not_oracle": true,
+  "replay_assertions_executed": true,
+  "replay_runner": "modules/veymur-recorder/tests/android/com/veymur/recorder/core/PolarReplayTest.kt",
+  "native_replay_assertions": {
+    "processed_inputs": 0,
+    "session_state": "preparation",
+    "hr_count": 0,
+    "session_records": 0,
+    "current_hr": null,
+    "connected_device_id": null,
+    "visible_devices": 0,
+    "limitations_include": [
+      "source_not_replay_ready",
+      "source_capture_incomplete",
+      "unprocessed_inputs_not_applied"
+    ]
+  }
+}

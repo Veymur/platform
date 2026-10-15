@@ -1,1 +1,1 @@
-export type { RecorderSnapshot, RecorderErrorCode, SessionState, SessionResult, ExportResult } from '../../modules/veymur-recorder';
+export type { RecorderSnapshot, DiagnosticStatus, RecorderErrorCode, SessionState, SessionResult, ExportResult } from '../../modules/veymur-recorder';

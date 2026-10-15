@@ -26,9 +26,10 @@ export const recorderPermissions: RecorderPermissions = {
   },
   async notifications() {
     if (await PermissionsAndroid.check(P.POST_NOTIFICATIONS)) return;
-    if (await confirm('Recording notification', 'Allow the ongoing recording notification? Denying permission does not block recording.', 'Allow', 'Continue without notifications', false)) {
+    if (await confirm('Sensor notification', 'Allow the ongoing notification for recording or diagnostics? Denying permission does not block either action.', 'Allow', 'Continue without notifications', false)) {
       await PermissionsAndroid.request(P.POST_NOTIFICATIONS);
     }
   },
+  confirmDeleteDiagnostic: id => confirm('Delete diagnostic capture?', `Delete ${id} and its temporary ZIP copies from this phone? Files already saved or shared elsewhere remain there.`, 'Delete capture', 'Keep capture'),
   confirmFinish: () => confirm('Finish recording?', 'Save the available data on this phone?', 'Save recording', 'Continue recording'),
 };

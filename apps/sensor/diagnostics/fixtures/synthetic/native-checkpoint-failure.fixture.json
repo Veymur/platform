@@ -1,0 +1,139 @@
+{
+  "capture_bounds": {
+    "ended_elapsed_ns": "675718566063",
+    "ended_utc_ms": 1700000000005,
+    "started_elapsed_ns": "675713610870",
+    "started_utc_ms": 1700000000000
+  },
+  "completeness": {
+    "all_source_inputs_retained": true,
+    "all_source_processing_retained": true,
+    "retained_unprocessed_inputs": 0,
+    "source_complete": false
+  },
+  "events": [
+    {
+      "callback_variant": "blePowerStateChanged",
+      "capture_id": "00000000-0000-4000-8000-000000000002",
+      "device_id": null,
+      "event_type": "bluetooth",
+      "payload": {
+        "powered": false
+      },
+      "process_run_id": "fixture-id-0001",
+      "received_elapsed_ns": "675715783950",
+      "received_utc_ms": 1700000000003,
+      "schema_version": 1,
+      "sequence": 1,
+      "source": "polar_sdk"
+    }
+  ],
+  "fixture_version": 1,
+  "initial_state": {
+    "as_of_elapsed_ns": "675713610870",
+    "confidence": "source_metadata_unverified",
+    "configuration": {
+      "active_ms": 0,
+      "automatic_reconnection": true,
+      "connected_device_id": null,
+      "hr_stale_after_ms": 5000,
+      "last_hr": null,
+      "last_hr_received_elapsed_ns": null,
+      "route_enabled": false,
+      "session_id": null,
+      "session_state": "preparation"
+    },
+    "context_policy": "full_available_prefix",
+    "focus_at_elapsed_ns": "675715783950",
+    "last_hr_age_ns": null
+  },
+  "kind": "synthetic",
+  "limitations": [
+    "initial_snapshot_activation_unverified",
+    "commands_and_external_effects_not_proven_complete",
+    "pseudonymization_is_not_anonymization",
+    "source_capture_incomplete"
+  ],
+  "processing": [
+    {
+      "capture_id": "00000000-0000-4000-8000-000000000002",
+      "command_id": null,
+      "error": null,
+      "input_sequence": 1,
+      "outcome": "applied",
+      "process_run_id": "fixture-id-0001",
+      "processed_elapsed_ns": "675715829349",
+      "processed_utc_ms": 1700000000003,
+      "processing_sequence": 1,
+      "schema_version": 1,
+      "session_id": null
+    }
+  ],
+  "provenance": {
+    "converter_version": "1.0.0",
+    "omitted_after_events": 0,
+    "omitted_processing": 0,
+    "origin_evidence": "operator_declared_kind",
+    "original_input_range": {
+      "first": 1,
+      "last": 1
+    },
+    "prehistory_events": 0,
+    "requested_input_range": {
+      "first": 1,
+      "last": 1
+    },
+    "retained_counts": {
+      "events": 1,
+      "processing": 1
+    },
+    "retained_input_range": {
+      "first": 1,
+      "last": 1
+    },
+    "schema_sha256": {
+      "event": "bbf02bcb7f01554496f8d38f1042e2e65a8b3aa223db4892c6a0149b3bc6f374",
+      "manifest": "1c54e33c9db485daad356b671de16404382362eb31787bf695b61d24b2d4d211",
+      "processing": "ba9e8baf2ab3bec78cd9e110619fcc0e22dc54f3280aaa300305936de2511215"
+    },
+    "source_archive_sha256": "095337df964a4560ec43ead77854a7526f1185948398b990849bf2338c4559dd",
+    "source_completeness": {
+      "checkpoint": {
+        "checkpoint_persisted": false,
+        "known_lost_events": 0,
+        "known_lost_processing": 0,
+        "last_committed_processing_sequence": 1,
+        "last_committed_sequence": 1,
+        "last_error_class": "fixture-text-0001",
+        "last_error_code": "write_failed",
+        "received_events": 1,
+        "received_processing": 1,
+        "saved_events": 1,
+        "saved_processing": 1,
+        "unknown_tail": true,
+        "unprocessed_inputs": 0
+      },
+      "state": "incomplete"
+    },
+    "source_counts": {
+      "events": 1,
+      "processing": 1
+    },
+    "source_schema_version": 1,
+    "transformations": [
+      "available_prefix_retained",
+      "identifiers_pseudonymized",
+      "free_text_replaced",
+      "sense_name_filter_preserved",
+      "utc_shifted_uniformly",
+      "sequence_and_monotonic_time_unchanged",
+      "source_metadata_minimized"
+    ],
+    "utc_policy": {
+      "mode": "shift_to_epoch",
+      "target_start_utc_ms": 1700000000000
+    }
+  },
+  "replay_ready": false,
+  "scenario": "native-checkpoint-failure"
+}

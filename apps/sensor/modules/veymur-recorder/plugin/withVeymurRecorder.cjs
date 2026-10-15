@@ -28,6 +28,10 @@ dependencies {
   androidTestImplementation 'androidx.sqlite:sqlite:2.4.0'
 }\n`;
     }
+    const polarTestDependency = "androidTestImplementation 'com.github.polarofficial:polar-ble-sdk:8.4.0'";
+    if (!config.modResults.contents.includes(polarTestDependency)) {
+      config.modResults.contents += `\ndependencies { ${polarTestDependency} }\n`;
+    }
     return config;
   });
   config = withProjectBuildGradle(config, (config) => {
@@ -68,6 +72,9 @@ dependencies {
       const target = path.join(config.modRequest.platformProjectRoot, 'app/src/androidTest/java');
       await fs.mkdir(target, { recursive: true });
       await fs.cp(tests, target, { recursive: true });
+      const replayAssets = path.join(config.modRequest.platformProjectRoot, 'app/src/androidTest/assets/polar');
+      await fs.mkdir(replayAssets, { recursive: true });
+      await fs.cp(path.resolve(__dirname, '../../../diagnostics/fixtures/synthetic'), replayAssets, { recursive: true });
       const file = path.join(
         config.modRequest.platformProjectRoot,
         "gradle/wrapper/gradle-wrapper.properties",

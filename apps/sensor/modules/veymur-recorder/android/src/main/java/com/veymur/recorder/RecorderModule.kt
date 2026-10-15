@@ -25,7 +25,7 @@ class RecorderModule : Module() {
             val connected = (binder as RecorderService.LocalBinder).service
             service = connected
             val visible = hostVisible ?: appContext.currentActivity?.hasWindowFocus()?.takeIf { it }
-            visible?.let { connected.activityVisible(it) }
+            visible?.let { hostVisible = it; connected.activityVisible(it) }
             if (observing) connected.addListener(listener)
             val requests = pending.toList(); pending.clear()
             requests.forEach { (_, action) -> action(connected) }
@@ -38,7 +38,7 @@ class RecorderModule : Module() {
         Name("VeymurRecorder")
         Events("onSnapshot")
         AsyncFunction("getModuleInfo") {
-            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 3, "recorderImplemented" to true)
+            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 5, "recorderImplemented" to true)
         }
         AsyncFunction("ensureActivity") { promise: Promise -> main.post {
             try { requireRecorderActivity(appContext.currentActivity, visible = true); promise.resolve(mapOf("available" to true)) }
@@ -51,36 +51,29 @@ class RecorderModule : Module() {
         AsyncFunction("cancelSearch") { promise: Promise -> command("cancelSearch", promise) }
         AsyncFunction("connect") { id: String, promise: Promise -> command("connect", promise, argument = id) }
         AsyncFunction("start") { route: Boolean, promise: Promise -> command("start", promise, route = route) }
+        AsyncFunction("startDiagnostic") { promise: Promise -> command("startDiagnostic", promise) }
+        AsyncFunction("stopDiagnostic") { promise: Promise -> command("stopDiagnostic", promise) }
+        AsyncFunction("listDiagnosticCaptures") { promise: Promise -> command("listDiagnosticCaptures", promise) }
+        AsyncFunction("exportDiagnostic") { id: String, promise: Promise -> export("exportDiagnostic", promise, id) }
+        AsyncFunction("deleteDiagnostic") { id: String, promise: Promise -> command("deleteDiagnostic", promise, argument = id) }
         AsyncFunction("pause") { promise: Promise -> command("pause", promise) }
         AsyncFunction("resume") { promise: Promise -> command("resume", promise) }
         AsyncFunction("finish") { promise: Promise -> command("finish", promise) }
-        AsyncFunction("exportLatest") { promise: Promise ->
-            withService(promise) { recorder ->
-                recorder.execute("exportLatest") { result ->
-                    result.fold(onSuccess = { value ->
-                        try {
-                            val ctx = requireNotNull(context)
-                            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.exports", File(value["path"] as String))
-                            promise.resolve(mapOf("uri" to uri.toString(), "mimeType" to "application/zip"))
-                        } catch (error: Exception) { reject(promise, error) }
-                    }, onFailure = { reject(promise, it) })
-                }
-            }
-        }
+        AsyncFunction("exportLatest") { promise: Promise -> export("exportLatest", promise) }
         AsyncFunction("shareExport") { uri: String, promise: Promise -> main.post {
             try {
                 val activity = requireRecorderActivity(appContext.currentActivity, visible = true)
                 val parsed = android.net.Uri.parse(uri)
                 if (parsed.scheme != "content" || parsed.authority != "${activity.packageName}.exports")
-                    throw RecorderError("INVALID_ARGUMENT", "Use the URI returned by exportLatest")
+                    throw RecorderError("INVALID_ARGUMENT", "Use an export URI returned by this app")
                 activity.contentResolver.openAssetFileDescriptor(parsed, "r")?.use { }
                     ?: throw RecorderError("INVALID_ARGUMENT", "Export file unavailable")
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/zip"; putExtra(Intent.EXTRA_STREAM, parsed)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    clipData = ClipData.newRawUri("Diagnostic export", parsed)
+                    clipData = ClipData.newRawUri("Local ZIP export", parsed)
                 }
-                activity.startActivity(Intent.createChooser(intent, "Share diagnostic ZIP"))
+                activity.startActivity(Intent.createChooser(intent, "Share ZIP"))
                 promise.resolve(mapOf("chooserOpened" to true))
             } catch (error: Exception) { reject(promise, error) }
         } }
@@ -88,10 +81,21 @@ class RecorderModule : Module() {
         OnStopObserving { main.post { observing = false; service?.removeListener(listener) } }
         OnDestroy { main.post { destroyed = true; releaseBinding("JS bridge detached") } }
     }
+    private fun export(name: String, promise: Promise, captureId: String? = null) {
+        withService(promise) { recorder -> recorder.execute(name, argument = captureId) { result ->
+            result.fold(onSuccess = { value ->
+                try {
+                    val ctx = requireNotNull(context)
+                    val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.exports", File(value["path"] as String))
+                    promise.resolve(mapOf("uri" to uri.toString(), "mimeType" to "application/zip"))
+                } catch (error: Exception) { reject(promise, error) }
+            }, onFailure = { reject(promise, it) })
+        } }
+    }
     private fun command(name: String, promise: Promise, argument: String? = null, route: Boolean = false) {
         withService(promise) { recorder ->
-            if (name == "start") {
-                try { requireRecorderActivity(appContext.currentActivity, visible = true) }
+            if (name == "start" || name == "startDiagnostic") {
+                try { requireRecorderActionActivity(appContext.currentActivity, hostVisible) }
                 catch (error: RecorderError) { reject(promise, error); return@withService }
             }
             recorder.execute(name, argument, route) { result ->

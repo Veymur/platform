@@ -1,0 +1,402 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Polar diagnostic manifest v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "capture_id": {
+      "type": "string"
+    },
+    "process_run_id": {
+      "type": "string"
+    },
+    "app_version": {
+      "type": "string"
+    },
+    "core_version": {
+      "type": "string"
+    },
+    "polar_sdk_version": {
+      "const": "8.4.0"
+    },
+    "phone": {
+      "type": "object",
+      "properties": {
+        "manufacturer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "android_api": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "android_release": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "manufacturer",
+        "model",
+        "android_api",
+        "android_release"
+      ],
+      "additionalProperties": false
+    },
+    "enabled_features": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "FEATURE_HR",
+          "FEATURE_BATTERY_INFO",
+          "FEATURE_DEVICE_INFO"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "firmware": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "input_sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "device_id",
+          "uuid",
+          "key",
+          "value",
+          "input_sequence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "started_utc_ms": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "started_elapsed_ns": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,18})$"
+    },
+    "ended_utc_ms": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ended_elapsed_ns": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "state": {
+      "enum": [
+        "complete",
+        "interrupted",
+        "incomplete"
+      ]
+    },
+    "initial_configuration": {
+      "type": "object",
+      "properties": {
+        "session_state": {
+          "enum": [
+            "preparation",
+            "recording",
+            "paused"
+          ]
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connected_device_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "route_enabled": {
+          "type": "boolean"
+        },
+        "automatic_reconnection": {
+          "type": "boolean"
+        },
+        "hr_stale_after_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "active_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "last_hr": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_hr_received_elapsed_ns": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "session_state",
+        "session_id",
+        "connected_device_id",
+        "route_enabled",
+        "automatic_reconnection",
+        "hr_stale_after_ms",
+        "active_ms",
+        "last_hr",
+        "last_hr_received_elapsed_ns"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "last_committed_sequence": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_committed_processing_sequence": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "received_events": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "saved_events": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "known_lost_events": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unknown_tail": {
+          "type": "boolean"
+        },
+        "received_processing": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "saved_processing": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "known_lost_processing": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unprocessed_inputs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "checkpoint_persisted": {
+          "type": "boolean"
+        },
+        "last_error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_error_class": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "last_committed_sequence",
+        "last_committed_processing_sequence",
+        "received_events",
+        "saved_events",
+        "known_lost_events",
+        "unknown_tail"
+      ],
+      "additionalProperties": false
+    },
+    "files": {
+      "type": "object",
+      "properties": {
+        "events.jsonl": {
+          "type": "object",
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "records": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "bytes",
+            "records",
+            "sha256"
+          ],
+          "additionalProperties": false
+        },
+        "processing.jsonl": {
+          "type": "object",
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "records": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "bytes",
+            "records",
+            "sha256"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "events.jsonl",
+        "processing.jsonl"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "capture_id",
+    "process_run_id",
+    "app_version",
+    "core_version",
+    "polar_sdk_version",
+    "phone",
+    "enabled_features",
+    "firmware",
+    "started_utc_ms",
+    "started_elapsed_ns",
+    "ended_utc_ms",
+    "ended_elapsed_ns",
+    "state",
+    "initial_configuration",
+    "checkpoint",
+    "files"
+  ],
+  "additionalProperties": false
+}

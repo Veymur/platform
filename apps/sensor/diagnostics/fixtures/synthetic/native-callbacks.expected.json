@@ -1,0 +1,141 @@
+{
+  "expectations_version": 1,
+  "fixture": "native-callbacks.fixture.json",
+  "basis": [
+    {
+      "id": "injection",
+      "reference": "modules/veymur-recorder/tests/android/com/veymur/recorder/core/PolarInputBoundaryTest.kt::everySdkCallbackAndSearchSignalUsesOwnedLosslessPayloadBeforeWorker",
+      "reason": "Handwritten synthetic SDK arguments include zero HR, repeats, false, NaN payload bits and negative zero."
+    },
+    {
+      "id": "export",
+      "reference": "modules/veymur-recorder/tests/android/com/veymur/recorder/core/DiagnosticExportTest.kt::actualSdkCallbacksRoundTripExactOwnedJsonIncludingFloatBitsArraysErrorsAndFirmware",
+      "reason": "Synthetic injection is exported with an empty preparation-state configuration and no commands."
+    },
+    {
+      "id": "native-rules",
+      "reference": "modules/veymur-recorder/android/src/main/java/com/veymur/recorder/core/PolarRecorderProcessor.kt::process",
+      "reason": "HR > 0 is required for a current value; session HR requires recording without pause; discovery requires Sense and isConnectable."
+    }
+  ],
+  "data_assertions": [
+    {
+      "path": "events",
+      "operation": "length",
+      "value": 21,
+      "basis": "injection"
+    },
+    {
+      "path": "events.5.payload.hr",
+      "operation": "equals",
+      "value": 0,
+      "basis": "injection"
+    },
+    {
+      "path": "events.5.payload.correctedHr",
+      "operation": "equals",
+      "value": -2,
+      "basis": "injection"
+    },
+    {
+      "path": "events.5.payload.ppgQuality",
+      "operation": "equals",
+      "value": 101,
+      "basis": "injection"
+    },
+    {
+      "path": "events.5.payload.rrs",
+      "operation": "equals",
+      "value": [
+        1024,
+        0,
+        1024
+      ],
+      "basis": "injection"
+    },
+    {
+      "path": "events.5.payload.rrsMs",
+      "operation": "equals",
+      "value": [
+        1000,
+        0,
+        1000
+      ],
+      "basis": "injection"
+    },
+    {
+      "path": "events.5.payload.contactStatus",
+      "operation": "equals",
+      "value": false,
+      "basis": "injection"
+    },
+    {
+      "path": "events.13.payload.celsius.ieee754_hex",
+      "operation": "equals",
+      "value": "7fc01234",
+      "basis": "injection"
+    },
+    {
+      "path": "events.13.payload.fahrenheit.ieee754_hex",
+      "operation": "equals",
+      "value": "80000000",
+      "basis": "injection"
+    },
+    {
+      "path": "events.16.payload.info.isConnectable",
+      "operation": "equals",
+      "value": false,
+      "basis": "injection"
+    },
+    {
+      "path": "initial_state.configuration.session_state",
+      "operation": "equals",
+      "value": "preparation",
+      "basis": "export"
+    },
+    {
+      "path": "events.0.received_utc_ms",
+      "operation": "equals",
+      "value": 1700000000000,
+      "basis": "injection"
+    },
+    {
+      "path": "processing.0.processed_utc_ms",
+      "operation": "equals",
+      "value": 1699999999000,
+      "basis": "injection"
+    }
+  ],
+  "replay_expectations": [
+    {
+      "basis": "native-rules",
+      "condition": "D7 replay starts in the declared preparation state with no extra session commands",
+      "expected": "Zero raw HR produces no current HR and no session HR record; it remains a zero in diagnostic input."
+    },
+    {
+      "basis": "native-rules",
+      "condition": "D7 replay processes the two injected discovery results",
+      "expected": "Both results remain raw input; neither enters the visible device list because they are not connectable and their names do not contain Sense."
+    },
+    {
+      "basis": "injection",
+      "condition": "D7 replay orders receipt and processing",
+      "expected": "The backwards UTC jump does not reorder inputs or change their monotonic intervals."
+    }
+  ],
+  "observed_processing_is_not_oracle": true,
+  "replay_assertions_executed": true,
+  "replay_runner": "modules/veymur-recorder/tests/android/com/veymur/recorder/core/PolarReplayTest.kt",
+  "native_replay_assertions": {
+    "processed_inputs": 21,
+    "session_state": "preparation",
+    "hr_count": 0,
+    "session_records": 0,
+    "current_hr": null,
+    "connected_device_id": null,
+    "visible_devices": 0,
+    "limitations_include": [
+      "source_not_replay_ready"
+    ]
+  }
+}

@@ -1,11 +1,17 @@
 export type RecorderModuleInfo = {
-  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 3; recorderImplemented: true;
+  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 5; recorderImplemented: true;
 };
 export type RecorderErrorCode = 'UNSUPPORTED_PLATFORM' | 'INCOMPATIBLE_BINARY' | 'SERVICE_UNAVAILABLE' |
   'NOT_READY' | 'NO_ACTIVITY' | 'PERMISSION_DENIED' | 'INVALID_STATE' | 'INVALID_ARGUMENT' |
-  'NOT_CONNECTED' | 'CONNECTION_ERROR' | 'DISCOVERY_ERROR' | 'STORAGE_ERROR' | 'NO_SESSIONS';
+  'NOT_CONNECTED' | 'CONNECTION_ERROR' | 'DISCOVERY_ERROR' | 'STORAGE_ERROR' | 'NO_SESSIONS' | 'DIAGNOSTIC_ERROR';
 export type SessionState = 'preparation' | 'recording' | 'paused' | 'finishing' | 'completed' | 'interrupted';
+export type DiagnosticStatus = {
+  captureId: string | null; state: 'off' | 'starting' | 'active' | 'stopping' | 'complete' | 'incomplete' | 'interrupted';
+  savedEvents: number; savedProcessing: number; knownLostEvents: number; knownLostProcessing: number;
+  unknownTail: boolean; checkpointPersisted: boolean; lastErrorCode: string | null;
+};
 export type RecorderSnapshot = {
+  diagnostic: DiagnosticStatus;
   revision: number; ready: boolean; status: string;
   sessionId: string | null; sessionState: SessionState;
   connectedDeviceId: string | null; batteryPercent: number | null;
@@ -25,6 +31,11 @@ export interface NativeRecorderModule {
   cancelSearch(): Promise<{ accepted: true }>;
   connect(id: string): Promise<{ accepted: true }>;
   start(routeRequested: boolean): Promise<{ sessionId: string }>;
+  startDiagnostic(): Promise<DiagnosticStatus>;
+  stopDiagnostic(): Promise<DiagnosticStatus>;
+  listDiagnosticCaptures(): Promise<{ captures: DiagnosticStatus[] }>;
+  exportDiagnostic(id: string): Promise<ExportResult>;
+  deleteDiagnostic(id: string): Promise<{ deleted: boolean }>;
   pause(): Promise<SessionResult>;
   resume(): Promise<SessionResult>;
   finish(): Promise<SessionResult>;

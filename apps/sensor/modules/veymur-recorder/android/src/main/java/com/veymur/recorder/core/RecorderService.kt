@@ -14,7 +14,6 @@ import android.location.LocationManager
 import android.os.*
 import com.polar.sdk.api.*
 import com.polar.sdk.api.model.*
-import com.polar.androidcommunications.api.ble.model.DisInfo
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
@@ -24,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong
 data class RecorderSnapshot(
     val status: String = "Preparing storage…", val devices: List<PolarDeviceInfo> = emptyList(),
     val connected: String? = null, val battery: Int? = null, val hr: Int? = null,
-    val lastHrElapsed: Long = 0, val recording: Boolean = false, val paused: Boolean = false,
+    val lastHrElapsed: Long = 0, val lastHrElapsedNs: Long = 0, val recording: Boolean = false, val paused: Boolean = false,
     val hrCount: Int = 0, val gpsCount: Int = 0, val activeMs: Long = 0, val lastCommit: Long = 0,
     val revision: Long = 0, val errorCode: String? = null, val recovered: Int = 0, val gpsStatus: String = "Route disabled", val ready: Boolean = false
 )
@@ -36,12 +35,27 @@ class RecorderService : Service() {
     private val workerThread = HandlerThread("veymur-recorder")
     private lateinit var worker: Handler
     private var journal: Journal? = null
+    private var diagnosticJournal: DiagnosticJournal? = null
+    private lateinit var diagnosticExports: DiagnosticExports
+    private var nextExportCleanup = 0L
+    @Volatile private var diagnosticCapture: DiagnosticCapture? = null
+    @Volatile private var diagnosticStatus: DiagnosticCaptureStatus? = null
+    @Volatile private var diagnosticPending = false
+    @Volatile private var diagnosticError: String? = null
+    private val diagnosticStopCallbacks = mutableListOf<(Result<Map<String, Any?>>) -> Unit>()
+    private fun diagnosticOwnsService() = diagnosticPending || diagnosticCapture?.status?.state in setOf("active", "stopping")
+
     @Volatile private var engine: RecorderSession? = null
     private val session get() = engine?.id
     private val listeners = CopyOnWriteArraySet<(Map<String, Any?>) -> Unit>()
     companion object { private val revisions = AtomicLong() }
     private val clock = RecordingClock { SystemClock.elapsedRealtime() }
     private lateinit var api: PolarBleApi
+    private val polarInputs: PolarInputBoundary = PolarInputBoundary(
+        utcNow = { System.currentTimeMillis() }, elapsedNowNs = { SystemClock.elapsedRealtimeNanos() },
+        dispatch = ::enqueuePolarInput)
+    private val polarCallbacks = PolarSdkCallbacks(polarInputs)
+    private val polarSearch = PolarSearchInput(polarInputs)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var searchJob: Job? = null
     private var lastActivityVisible: Boolean? = null
@@ -88,6 +102,18 @@ class RecorderService : Service() {
             engine = RecorderSession(journal!!, clock)
             snapshot = snapshot.copy(ready = true, recovered = journal!!.recoverInterrupted(), status = "Turn on your sensor and search for it")
         }
+        // Opening/recovery is independent of recorder storage and never enables capture.
+        val diagnostics = DiagnosticJournal(this)
+        diagnosticJournal = diagnostics
+        diagnostics.ready.thenCompose { diagnostics.listCaptures() }.whenComplete { captures, error ->
+            worker.post {
+                if (diagnosticJournal !== diagnostics) return@post
+                if (error != null) diagnosticError = "open_failed"
+                else if (diagnosticCapture == null && !diagnosticPending) diagnosticStatus = captures.lastOrNull()
+                publish()
+            }
+        }
+        diagnosticExports = DiagnosticExports(this, diagnosticJournal!!)
         worker.post(tick)
     }
     private fun initializePolar() {
@@ -97,57 +123,37 @@ class RecorderService : Service() {
             PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO,
             PolarBleApi.PolarBleSdkFeature.FEATURE_DEVICE_INFO))
         api.setAutomaticReconnection(true)
-        api.setApiCallback(object : PolarBleApiCallback() {
-            override fun blePowerStateChanged(powered: Boolean) = enqueue {
-                if (!powered) snapshot = snapshot.copy(status = "Bluetooth disabled", connected = null, hr = null)
-                record("bluetooth", JSONObject().put("powered", powered))
-            }
-            override fun deviceConnecting(info: PolarDeviceInfo) = enqueue { snapshot = snapshot.copy(status = "Connecting to ${info.deviceId}…") }
-            override fun deviceConnected(info: PolarDeviceInfo) = enqueue {
-                snapshot = snapshot.copy(connected = info.deviceId, status = "Sensor connected")
-                record("connected", JSONObject().put("device", info.deviceId))
-            }
-            override fun deviceDisconnected(info: PolarDeviceInfo, diagnostics: PolarBleDisconnectInfo) = disconnected(info)
-            @Suppress("DEPRECATION")
-            override fun deviceDisconnected(info: PolarDeviceInfo) = disconnected(info)
-            override fun batteryLevelReceived(identifier: String, level: Int) = enqueue {
-                snapshot = snapshot.copy(battery = level)
-                record("sensor_battery", JSONObject().put("percent", level))
-            }
-            override fun disInformationReceived(identifier: String, uuid: java.util.UUID, value: String) = enqueue {
-                deviceDetails[uuid.toString()] = value
-                record("device_info", JSONObject().put("uuid", uuid).put("value", value))
-            }
-            override fun disInformationReceived(identifier: String, disInfo: DisInfo) = enqueue {
-                deviceDetails["dis"] = disInfo.toString()
-                record("device_info", JSONObject().put("details", disInfo.toString()))
-            }
-            override fun htsNotificationReceived(identifier: String, data: PolarHealthThermometerData) { /* Not part of this prototype. */ }
-            override fun hrNotificationReceived(identifier: String, data: PolarHrData.PolarHrSample) = enqueue {
-                val now = SystemClock.elapsedRealtime()
-                snapshot = snapshot.copy(hr = data.hr.takeIf { it > 0 }, lastHrElapsed = now)
-                if (snapshot.recording && !snapshot.paused) {
-                    record("hr", JSONObject().put("bpm", data.hr).put("contact", data.contactStatus)
-                        .put("contact_supported", data.contactStatusSupported).put("ppg_quality", data.ppgQuality)
-                        .put("active_ms", clock.activeMs()).put("timestamp_source", "phone_receipt"))
-                    snapshot = snapshot.copy(hrCount = snapshot.hrCount + 1)
-                }
-            }
-        })
+        api.setApiCallback(polarCallbacks)
     }
-    private fun disconnected(info: PolarDeviceInfo) = enqueue {
-        snapshot = snapshot.copy(connected = null, hr = null, status = "Connection lost. The SDK is reconnecting")
-        record("disconnected", JSONObject().put("device", info.deviceId))
+    private fun enqueuePolarInput(delivery: PolarInputDelivery): Unit = enqueue {
+        polarInputs.process(delivery, { session }, ::processPolarInput)
     }
+    private val control = RecorderControl({ engine!! }, { snapshot }, { snapshot = it }, System::currentTimeMillis)
+    private val processor = PolarRecorderProcessor({ snapshot }, { snapshot = it }, clock, deviceDetails, ::record)
+    private fun processPolarInput(event: PolarInputEvent): Boolean = processor.process(event)
     private val tick = object : Runnable {
         override fun run() {
             if (shuttingDown) return
+            if (SystemClock.elapsedRealtime() >= nextExportCleanup) {
+                nextExportCleanup = SystemClock.elapsedRealtime() + 60000
+                diagnosticExports.cleanup().whenComplete { _, error -> if (error != null) worker.post { diagnosticFailure(error); publish() } }
+            }
+            diagnosticCapture?.let { capture ->
+                diagnosticStatus = capture.status
+                if (capture.status.state !in setOf("active", "stopping")) {
+                    polarInputs.setSink(null)
+                    diagnosticCapture = null
+                    main.post { stopResources() }
+                }
+            }
+            if (snapshot.recording || diagnosticOwnsService()) {
+                if (SystemClock.elapsedRealtime() >= nextWakeRenewal) {
+                    nextWakeRenewal = SystemClock.elapsedRealtime() + 60000
+                    main.post { if (snapshot.recording || diagnosticOwnsService()) wakeLock?.acquire(10 * 60 * 1000L) }
+                }
+            }
             if (snapshot.recording) {
                 try {
-                    if (SystemClock.elapsedRealtime() >= nextWakeRenewal) {
-                        nextWakeRenewal = SystemClock.elapsedRealtime() + 60000
-                        main.post { if (snapshot.recording) wakeLock?.acquire(10 * 60 * 1000L) }
-                    }
                     val active = clock.activeMs()
                     session?.let {
                         journal!!.updateState(it, if (snapshot.paused) "paused" else "recording", active)
@@ -177,19 +183,20 @@ class RecorderService : Service() {
         if (snapshot.recording || starting) throw RecorderError("INVALID_STATE", "Recording is active")
         searchJob?.cancel()
         enqueue { snapshot = snapshot.copy(devices = emptyList(), status = "Searching for Verity Sense…") }
+        val subscriptionId = java.util.UUID.randomUUID().toString()
         searchJob = scope.launch {
             try {
                 withTimeout(15000) {
-                    api.searchForDevice().collect { info ->
-                        if (info.name.contains("Sense", ignoreCase = true) && info.isConnectable) enqueue {
-                            snapshot = snapshot.copy(devices = (snapshot.devices + info).distinctBy { it.deviceId })
-                        }
-                    }
+                    api.searchForDevice().collect { info -> polarSearch.result(subscriptionId, info) }
+                    polarSearch.completed(subscriptionId)
                 }
-            } catch (_: TimeoutCancellationException) {
-                enqueue { snapshot = snapshot.copy(status = if (snapshot.devices.isEmpty()) "Sensor not found. Turn it on and search again" else "Select your sensor") }
-            } catch (_: CancellationException) { /* Explicit cancel. */ }
-            catch (e: Exception) { enqueue { snapshot = snapshot.copy(errorCode = "DISCOVERY_ERROR", status = "Sensor discovery failed; retry") } }
+            } catch (error: TimeoutCancellationException) {
+                polarSearch.cancelled(subscriptionId, "timeout", error)
+            } catch (error: CancellationException) {
+                polarSearch.cancelled(subscriptionId, "cancelled", error)
+            } catch (error: Exception) {
+                polarSearch.error(subscriptionId, error)
+            }
         }
     }
     private fun cancelSearch() { searchJob?.cancel(); enqueue { snapshot = snapshot.copy(status = "Search stopped") } }
@@ -203,31 +210,17 @@ class RecorderService : Service() {
             api.connectToDevice(id)
         } catch (e: Exception) { throw RecorderError("CONNECTION_ERROR", "Unable to connect to selected sensor") }
     }
-    private fun start(route: Boolean, done: (Result<Map<String, Any?>>) -> Unit) {
+    private fun start(route: Boolean, command: PolarInputDelivery?, done: (Result<Map<String, Any?>>) -> Unit) {
         if (snapshot.connected == null) throw RecorderError("NOT_CONNECTED", "Connect a sensor first")
         if (snapshot.recording || starting || finishing || session != null) throw RecorderError("INVALID_STATE", "A session is already active")
         starting = true
-        val device = snapshot.connected!!
         try {
             routeEnabled = route && gps.isLocationEnabled &&
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val notification = Notification.Builder(this, "recorder").setContentTitle("Veymur: local recording in progress")
-                .setContentText("Heart rate${if (routeEnabled) " and route" else ""} saved on this phone")
-                .setSmallIcon(android.R.drawable.ic_media_play).setOngoing(true)
-                .setContentIntent(PendingIntent.getActivity(this, 0, requireNotNull(packageManager.getLaunchIntentForPackage(packageName)), PendingIntent.FLAG_IMMUTABLE)).build()
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
-                (if (routeEnabled) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0))
-            startService(Intent(this, RecorderService::class.java))
-            wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "veymur:recorder").apply {
-                setReferenceCounted(false); acquire(10 * 60 * 1000L)
-            }
-            nextWakeRenewal = SystemClock.elapsedRealtime() + 60000
-            workerCommand(done) {
-                val id = engine!!.start(device, routeEnabled, JSONObject().put("route_requested", route).put("route_enabled", routeEnabled)
+            holdResources()
+            workerCommand(done, command) {
+                val id = control.start(route, routeEnabled, JSONObject().put("route_requested", route).put("route_enabled", routeEnabled)
                     .put("device_info", JSONObject(deviceDetails.toMap())).put("phone_battery_percent", phoneBattery()))
-                snapshot = snapshot.copy(recording = true, paused = false, errorCode = null, hrCount = 0, gpsCount = 0, activeMs = 0,
-                    lastCommit = System.currentTimeMillis(), status = "Recording on this phone",
-                    gpsStatus = if (routeEnabled) "Waiting for coordinates" else if (route) "GPS unavailable; recording heart rate only" else "Route disabled")
                 main.post { starting = false; if (routeEnabled && snapshot.recording && !snapshot.paused) requestGps() }
                 mapOf("sessionId" to id)
             }
@@ -252,18 +245,17 @@ class RecorderService : Service() {
         val hadSession = session != null
         finishing = true
         if (hadSession) { snapshot = snapshot.copy(status = "Saving recording…"); publish() }
-        val id = try { engine!!.finish(phoneBattery()) } catch (e: Exception) { finishing = false; throw e }
-        snapshot = snapshot.copy(recording = false, paused = false, errorCode = null, activeMs = clock.activeMs(),
-            lastCommit = if (hadSession) System.currentTimeMillis() else snapshot.lastCommit, status = message)
+        val id = try { control.finish(phoneBattery(), message) } catch (e: Exception) { finishing = false; throw e }
         main.post { stopResources(); finishing = false }
         return mapOf("sessionId" to id, "state" to "completed")
     }
     fun execute(name: String, argument: String? = null, route: Boolean = false, done: (Result<Map<String, Any?>>) -> Unit) {
+        val command = if (name in setOf("start", "pause", "resume", "finish")) polarInputs.command(name, route) else null
         main.post {
             try {
                 if (shuttingDown) throw RecorderError("SERVICE_UNAVAILABLE", "Recorder service stopped")
-                if (!snapshot.ready && name != "getSnapshot") throw RecorderError("NOT_READY", "Recorder storage is not ready; retry")
-                if (name in setOf("search", "connect", "start")) {
+                if (!snapshot.ready && name !in setOf("getSnapshot", "startDiagnostic", "stopDiagnostic", "listDiagnosticCaptures", "exportDiagnostic", "deleteDiagnostic")) throw RecorderError("NOT_READY", "Recorder storage is not ready; retry")
+                if (name in setOf("search", "connect", "start", "startDiagnostic")) {
                     if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
                         checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED)
                         throw RecorderError("PERMISSION_DENIED", "Grant Bluetooth permissions before this action")
@@ -275,16 +267,28 @@ class RecorderService : Service() {
                         val id = argument?.takeIf { it.isNotBlank() } ?: throw RecorderError("INVALID_ARGUMENT", "Device identifier required")
                         initializePolar(); connect(id); done(Result.success(mapOf("accepted" to true)))
                     }
-                    "start" -> start(route, done)
-                    else -> workerCommand(done) {
+                    "start" -> start(route, command, done)
+                    "startDiagnostic" -> startDiagnostic(done)
+                    "stopDiagnostic" -> stopDiagnostic(done)
+                    "listDiagnosticCaptures" -> diagnosticCommand(diagnosticJournal!!.listCaptures().thenApply { captures ->
+                        mapOf("captures" to captures.map { diagnosticDto(it, null, false) })
+                    }, done)
+                    "exportDiagnostic" -> diagnosticCommand(diagnosticExports.export(argument ?: "").thenApply { file -> mapOf("path" to file.absolutePath) }, done)
+                    "deleteDiagnostic" -> {
+                        val id = argument ?: throw RecorderError("INVALID_ARGUMENT", "Capture ID required")
+                        worker.post {
+                            val live = diagnosticCapture
+                            if (live?.captureId == id && live.status.state in setOf("complete", "interrupted", "incomplete")) {
+                                diagnosticStatus = live.status; diagnosticCapture = null; polarInputs.setSink(null)
+                            }
+                            diagnosticCommand(diagnosticExports.delete(id).thenApply { deleted -> mapOf("deleted" to deleted) }, done, id)
+                        }
+                    }
+                    else -> workerCommand(done, command) {
                         when (name) {
                             "getSnapshot" -> dto()
                             "pause", "resume" -> {
-                                val previousState = engine!!.state
-                                if (name == "pause") engine!!.pause() else engine!!.resume()
-                                snapshot = snapshot.copy(paused = engine!!.state == "paused", activeMs = clock.activeMs(),
-                                    lastCommit = if (previousState != engine!!.state) System.currentTimeMillis() else snapshot.lastCommit, errorCode = null,
-                                    status = if (engine!!.state == "paused") "Paused" else "Recording on this phone")
+                                control.pauseOrResume(name)
                                 main.post { if (snapshot.paused) gps.removeUpdates(locations) else if (routeEnabled && snapshot.recording) requestGps() }
                                 mapOf("sessionId" to engine!!.id, "state" to engine!!.state)
                             }
@@ -297,13 +301,15 @@ class RecorderService : Service() {
                         }
                     }
                 }
-            } catch (e: Exception) { done(Result.failure(e)) }
+            } catch (e: Exception) { polarInputs.commandResult(command, session, "rejected", e); done(Result.failure(e)) }
         }
     }
-    private fun workerCommand(done: (Result<Map<String, Any?>>) -> Unit, action: () -> Map<String, Any?>) {
+    private fun workerCommand(done: (Result<Map<String, Any?>>) -> Unit, command: PolarInputDelivery? = null, action: () -> Map<String, Any?>) {
+        polarInputs.commandResult(command, session, "accepted")
         worker.post {
-            try { val result = action(); publish(); main.post { done(Result.success(result)) } }
+            try { val result = polarInputs.commandProcess(command, { session }, action); publish(); main.post { done(Result.success(result)) } }
             catch (e: Exception) {
+                if (command?.event?.payload()?.optString("name") == "start") main.post { starting = false; stopResources() }
                 if (e !is RecorderError) { fail(e); main.post { starting = false }; publish() }
                 main.post { done(Result.failure(if (e is RecorderError) e else RecorderError("STORAGE_ERROR", "Local storage operation failed; saved portion retained"))) }
             }
@@ -317,21 +323,144 @@ class RecorderService : Service() {
         main.post { listeners.forEach { it(state) } }
     }
     private fun dto(): Map<String, Any?> {
-        val age = snapshot.lastHrElapsed.takeIf { it > 0 }?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0) }
-        val fresh = snapshot.connected != null && snapshot.hr != null && age != null && age <= 5000
+        val heartRate = snapshot.heartRateAt(SystemClock.elapsedRealtimeNanos())
         return mapOf("revision" to snapshot.revision, "ready" to snapshot.ready, "status" to snapshot.status,
             "sessionId" to engine?.id, "sessionState" to (if (finishing && session != null) "finishing" else engine?.state ?: "preparation"),
             "connectedDeviceId" to snapshot.connected, "batteryPercent" to snapshot.battery.takeIf { snapshot.connected != null },
-            "hr" to snapshot.hr.takeIf { fresh }, "hrAgeMs" to age,
-            "hrStatus" to if (fresh) "fresh" else if (snapshot.hr != null && snapshot.connected != null) "stale" else "missing",
+            "hr" to heartRate.value, "hrAgeMs" to heartRate.ageMs,
+            "hrStatus" to heartRate.status,
             "devices" to snapshot.devices.map { mapOf("id" to it.deviceId, "name" to it.name, "address" to it.address) },
             "hrCount" to snapshot.hrCount, "gpsCount" to snapshot.gpsCount, "activeMs" to snapshot.activeMs,
             "lastCommitUtcMs" to snapshot.lastCommit.takeIf { it > 0 }, "gpsStatus" to snapshot.gpsStatus,
-            "routeEnabled" to routeEnabled, "recoveredCount" to snapshot.recovered, "errorCode" to snapshot.errorCode)
+            "routeEnabled" to routeEnabled, "recoveredCount" to snapshot.recovered, "errorCode" to snapshot.errorCode, "diagnostic" to diagnosticDto())
     }
     private fun phoneBattery(): Int = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    private fun diagnosticDto(
+        status: DiagnosticCaptureStatus? = diagnosticCapture?.status ?: diagnosticStatus,
+        error: String? = diagnosticError,
+        pending: Boolean = diagnosticPending,
+    ): Map<String, Any?> {
+        return mapOf("captureId" to status?.captureId,
+            "state" to (if (pending) "starting" else status?.state ?: "off"),
+            "savedEvents" to (status?.savedEvents ?: 0L), "savedProcessing" to (status?.savedProcessing ?: 0L),
+            "knownLostEvents" to (status?.knownLostEvents ?: 0L), "knownLostProcessing" to (status?.knownLostProcessing ?: 0L),
+            "unknownTail" to (status?.unknownTail ?: false), "checkpointPersisted" to (status?.checkpointPersisted ?: true),
+            "lastErrorCode" to (error ?: status?.lastErrorCode))
+    }
+    private fun diagnosticCommand(
+        future: java.util.concurrent.CompletableFuture<Map<String, Any?>>,
+        done: (Result<Map<String, Any?>>) -> Unit,
+        deletedId: String? = null,
+    ) {
+        future.whenComplete { value, error -> worker.post {
+            val result = if (error == null) {
+                if (deletedId != null && diagnosticStatus?.captureId == deletedId) {
+                    diagnosticStatus = null; diagnosticError = null
+                }
+                Result.success(value)
+            } else {
+                var cause: Throwable = error
+                while (cause is java.util.concurrent.CompletionException && cause.cause != null) cause = cause.cause!!
+                Result.failure(if ((cause as? DiagnosticStorageError)?.code in setOf("capture_active", "export_active"))
+                    RecorderError("INVALID_STATE", "Stop this diagnostic capture before exporting or deleting it")
+                    else diagnosticFailure(error))
+            }
+            publish(); main.post { done(result) }
+        } }
+    }
+    private fun diagnosticFailure(error: Throwable): RecorderError {
+        var cause = error
+        while (cause.cause != null && cause is java.util.concurrent.CompletionException) cause = cause.cause!!
+        diagnosticError = (cause as? DiagnosticStorageError)?.code ?: "operation_failed"
+        return RecorderError("DIAGNOSTIC_ERROR", "Diagnostic capture failed ($diagnosticError); check capture status")
+    }
+    /** Explicit visible-app action; never initializes the SDK or starts discovery/subscriptions. */
+    private fun startDiagnostic(done: (Result<Map<String, Any?>>) -> Unit) {
+        if (diagnosticPending || diagnosticStopCallbacks.isNotEmpty()) throw RecorderError("INVALID_STATE", "Diagnostic capture is changing state")
+        diagnosticCapture?.let {
+            if (it.status.state == "active") { done(Result.success(diagnosticDto())); return }
+            if (it.status.state == "stopping") throw RecorderError("INVALID_STATE", "Diagnostic capture is stopping")
+        }
+        if (lastActivityVisible != true) throw RecorderError("NO_ACTIVITY", "Start diagnostics from the visible app")
+        diagnosticPending = true; diagnosticError = null
+        try { holdResources() } catch (error: Exception) { diagnosticPending = false; stopResources(); throw error }
+        worker.post {
+            val configuration = JSONObject().put("session_state", if (snapshot.recording) { if (snapshot.paused) "paused" else "recording" } else "preparation")
+                .put("session_id", session ?: JSONObject.NULL).put("connected_device_id", snapshot.connected ?: JSONObject.NULL)
+                .put("route_enabled", routeEnabled && snapshot.recording).put("automatic_reconnection", true)
+                .put("hr_stale_after_ms", 5000).put("active_ms", clock.activeMs()).put("last_hr", snapshot.hr ?: JSONObject.NULL)
+                .put("last_hr_received_elapsed_ns", if (snapshot.lastHrElapsedNs > 0) snapshot.lastHrElapsedNs.toString() else JSONObject.NULL)
+            val environment = JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
+                .put("android_api", Build.VERSION.SDK_INT).put("android_release", Build.VERSION.RELEASE)
+                .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName ?: "unknown")
+                .put("core_version", "stage0-777a33b-polar-replay-d7").put("device_info", JSONObject(deviceDetails.toMap()))
+            diagnosticJournal!!.startCapture(PolarInputBoundary.processRunId, configuration.toString(), environment.toString()).whenComplete { capture, error ->
+                worker.post {
+                    diagnosticPending = false
+                    if (shuttingDown) {
+                        capture?.stop()
+                        main.post { done(Result.failure(RecorderError("SERVICE_UNAVAILABLE", "Service stopped while starting diagnostics"))) }
+                        return@post
+                    }
+                    val result = if (error != null) Result.failure<Map<String, Any?>>(diagnosticFailure(error)) else {
+                        diagnosticCapture = capture; diagnosticStatus = capture.status; polarInputs.setSink(capture)
+                        Result.success(diagnosticDto())
+                    }
+                    publish()
+                    main.post { stopResources(); done(result) }
+                }
+            }
+        }
+    }
+    private fun stopDiagnostic(done: (Result<Map<String, Any?>>) -> Unit) {
+        if (diagnosticPending) throw RecorderError("INVALID_STATE", "Diagnostic capture is starting")
+        if (diagnosticStopCallbacks.isNotEmpty()) { diagnosticStopCallbacks.add(done); return }
+        val capture = diagnosticCapture
+        if (capture == null) {
+            if (diagnosticStatus?.checkpointPersisted == false || diagnosticStatus?.state in setOf("incomplete", "interrupted")) done(Result.failure(RecorderError("DIAGNOSTIC_ERROR", "Diagnostic capture is incomplete; check capture status")))
+            else done(Result.success(diagnosticDto()))
+            return
+        }
+        // Deliveries already queued retain their sink and may finish processing after this cutoff.
+        diagnosticStopCallbacks.add(done)
+        polarInputs.setSink(null)
+        capture.stop().whenComplete { status, error ->
+            worker.post {
+                if (diagnosticCapture === capture || diagnosticCapture == null) {
+                    diagnosticStatus = status ?: capture.status
+                    diagnosticCapture = null
+                }
+                val result = if (error != null) Result.failure<Map<String, Any?>>(diagnosticFailure(error))
+                    else if (status.state != "complete") Result.failure(RecorderError("DIAGNOSTIC_ERROR", "Diagnostic capture is incomplete; check capture status"))
+                    else Result.success(diagnosticDto())
+                publish(); main.post {
+                    stopResources()
+                    val callbacks = diagnosticStopCallbacks.toList(); diagnosticStopCallbacks.clear()
+                    callbacks.forEach { it(result) }
+                }
+            }
+        }
+    }
+    private fun foregroundNotification(): Notification = Notification.Builder(this, "recorder")
+            .setContentTitle(if (diagnosticOwnsService()) "Veymur: diagnostic capture enabled" else "Veymur: local recording in progress")
+            .setContentText("${if (snapshot.recording || starting) "Recording" else "Sensor diagnostics"} saved on this phone")
+            .setSmallIcon(android.R.drawable.ic_media_play).setOngoing(true)
+            .setContentIntent(PendingIntent.getActivity(this, 0, requireNotNull(packageManager.getLaunchIntentForPackage(packageName)), PendingIntent.FLAG_IMMUTABLE)).build()
+    private fun holdResources() {
+        startForeground(1, foregroundNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+            (if (routeEnabled && (snapshot.recording || starting)) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0))
+        startService(Intent(this, RecorderService::class.java))
+        if (wakeLock == null) wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "veymur:recorder").apply {
+            setReferenceCounted(false); acquire(10 * 60 * 1000L)
+        }
+        nextWakeRenewal = SystemClock.elapsedRealtime() + 60000
+    }
     private fun stopResources() {
-        gps.removeUpdates(locations)
+        if (!snapshot.recording) gps.removeUpdates(locations)
+        if (snapshot.recording || diagnosticOwnsService()) {
+            getSystemService(NotificationManager::class.java).notify(1, foregroundNotification())
+            return
+        }
         wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null
         stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
     }
@@ -342,7 +471,15 @@ class RecorderService : Service() {
         scope.cancel(); if (::api.isInitialized) api.shutDown(); gps.removeUpdates(locations)
         wakeLock?.let { if (it.isHeld) it.release() }
         worker.removeCallbacks(tick)
-        worker.post { journal?.close(); workerThread.quitSafely() }
+        polarInputs.setSink(null)
+        worker.post {
+            try { journal?.close() } finally {
+                diagnosticExports.closeAsync().whenComplete { _, _ ->
+                    diagnosticJournal?.closeAsync()?.whenComplete { _, _ -> workerThread.quitSafely() }
+                        ?: workerThread.quitSafely()
+                }
+            }
+        }
         super.onDestroy()
     }
 }

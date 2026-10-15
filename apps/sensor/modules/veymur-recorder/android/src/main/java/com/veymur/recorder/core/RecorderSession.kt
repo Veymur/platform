@@ -5,7 +5,7 @@ import org.json.JSONObject
 class RecorderError(val code: String, message: String) : Exception(message)
 
 /** Invoked exclusively by the service writer, with no React/Expo dependency. */
-class RecorderSession(private val journal: Journal, val clock: RecordingClock) {
+class RecorderSession(private val journal: RecorderSessionStore, val clock: RecordingClock) {
     @Volatile var id: String? = null; private set
     @Volatile var state = "preparation"; private set
     private var completedId: String? = null

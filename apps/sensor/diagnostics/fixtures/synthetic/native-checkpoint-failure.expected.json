@@ -65,5 +65,19 @@
     }
   ],
   "observed_processing_is_not_oracle": true,
-  "replay_assertions_executed": false
+  "replay_assertions_executed": true,
+  "replay_runner": "modules/veymur-recorder/tests/android/com/veymur/recorder/core/PolarReplayTest.kt",
+  "native_replay_assertions": {
+    "processed_inputs": 1,
+    "session_state": "preparation",
+    "hr_count": 0,
+    "session_records": 0,
+    "current_hr": null,
+    "connected_device_id": null,
+    "visible_devices": 0,
+    "limitations_include": [
+      "source_not_replay_ready",
+      "source_capture_incomplete"
+    ]
+  }
 }

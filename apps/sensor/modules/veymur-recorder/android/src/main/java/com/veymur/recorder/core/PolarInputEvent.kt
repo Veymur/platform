@@ -40,7 +40,8 @@ data class PolarInputProcessing(
         .put("process_run_id", input.processRunId).put("processing_sequence", processingSequence)
         .put("input_sequence", input.sequence).put("processed_utc_ms", processedUtcMs)
         .put("processed_elapsed_ns", processedElapsedNs.toString())
-        .put("session_id", sessionId ?: JSONObject.NULL).put("command_id", JSONObject.NULL)
+        .put("session_id", sessionId ?: JSONObject.NULL).put("command_id",
+            if (input.source == "app_command") input.payload().getString("command_id") else JSONObject.NULL)
         .put("outcome", outcome).put("error", errorJson?.let(::JSONObject) ?: JSONObject.NULL)
 }
 
@@ -65,6 +66,12 @@ class PolarInputBoundary(
         private val processingSequence = AtomicLong()
     }
     private val entrance = Any()
+    private val processingEntrance = Any()
+    private data class Stamp(val sequence: Long, val utc: Long, val elapsed: Long)
+    // Command acceptance can run on main while callback/commit processing runs on the writer.
+    private fun processingStamp() = synchronized(processingEntrance) {
+        Stamp(processingSequence.incrementAndGet(), utcNow(), elapsedNowNs())
+    }
     private var sink: PolarDiagnosticSink? = null
     val sinkFailures = AtomicLong()
 
@@ -85,11 +92,41 @@ class PolarInputBoundary(
         }
     }
 
+    /** Session command receipt shares the callback sequence/sink selection lock. */
+    fun command(name: String, route: Boolean): PolarInputDelivery = synchronized(entrance) {
+        val target = sink
+        val event = PolarInputEvent(target?.captureId, processRunId, inputSequence.incrementAndGet(), utcNow(), elapsedNowNs(),
+            "app_command", "command_requested", "execute", null, JSONObject().put("command_id", UUID.randomUUID().toString())
+                .put("name", name).put("argument", JSONObject.NULL).put("route", route).toString())
+        offer { target?.offerInput(event) }
+        PolarInputDelivery(event, target)
+    }
+    fun commandResult(delivery: PolarInputDelivery?, sessionId: String?, outcome: String, error: Exception? = null) {
+        if (delivery == null) return
+        val stamp = processingStamp()
+        offer { delivery.sink?.offerProcessing(PolarInputProcessing(delivery.event, stamp.sequence,
+            stamp.utc, stamp.elapsed, sessionId, outcome, error?.let { PolarInputPayload.error(it).toString() })) }
+    }
+    /** Terminal timestamp is worker execution time, not a delayed main-thread acknowledgement. */
+    fun <T> commandProcess(delivery: PolarInputDelivery?, sessionId: () -> String?, action: () -> T): T {
+        if (delivery == null) return action()
+        val stamp = processingStamp()
+        val sequence = stamp.sequence; val utc = stamp.utc; val elapsed = stamp.elapsed
+        try {
+            val result = action()
+            offer { delivery.sink?.offerProcessing(PolarInputProcessing(delivery.event, sequence, utc, elapsed, sessionId(), "committed", null)) }
+            return result
+        } catch (error: Exception) {
+            offer { delivery.sink?.offerProcessing(PolarInputProcessing(delivery.event, sequence, utc, elapsed, sessionId(),
+                if (error is RecorderError) "rejected" else "failed", PolarInputPayload.error(error).toString())) }
+            throw error
+        }
+    }
+
     /** Called on the recorder worker. Live and future replay feed the same processor here. */
     fun process(delivery: PolarInputDelivery, sessionId: () -> String?, processor: (PolarInputEvent) -> Boolean) {
-        val sequence = processingSequence.incrementAndGet()
-        val utc = utcNow()
-        val elapsed = elapsedNowNs()
+        val stamp = processingStamp()
+        val sequence = stamp.sequence; val utc = stamp.utc; val elapsed = stamp.elapsed
         try {
             val applied = processor(delivery.event)
             offer { delivery.sink?.offerProcessing(PolarInputProcessing(delivery.event, sequence, utc, elapsed,

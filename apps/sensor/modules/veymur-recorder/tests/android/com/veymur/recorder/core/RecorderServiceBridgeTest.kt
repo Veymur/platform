@@ -70,13 +70,13 @@ class RecorderServiceBridgeTest {
         }
         instrumentation.runOnMainSync { host.startActivity(host.packageManager.getLaunchIntentForPackage(host.packageName)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         instrumentation.waitForIdleSync(); SystemClock.sleep(500)
-        writer(service) { field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, lastHrElapsed = SystemClock.elapsedRealtime() - 6000)) }
+        writer(service) { field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, lastHrElapsed = SystemClock.elapsedRealtime() - 6000, lastHrElapsedNs = SystemClock.elapsedRealtimeNanos() - 6_000_000_000)) }
     }
     @Test fun snapshotsRevisionsStalenessReadinessMissingActivityAndStoppedServiceErrors() {
         val binding = bind(); val service = binding.service
         try {
             isolated(service)
-            writer(service) { field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, battery = 50, lastHrElapsed = SystemClock.elapsedRealtime() - 6000)) }
+            writer(service) { field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, battery = 50, lastHrElapsed = SystemClock.elapsedRealtime() - 6000, lastHrElapsedNs = SystemClock.elapsedRealtimeNanos() - 6_000_000_000)) }
             val first = command(service, "getSnapshot").getOrThrow()
             assertNull(first["hr"]); assertEquals("stale", first["hrStatus"]); assertTrue((first["hrAgeMs"] as Long) >= 6000)
             assertEquals(50, first["batteryPercent"])
@@ -187,7 +187,12 @@ class RecorderServiceBridgeTest {
             state = command(service, "getSnapshot").getOrThrow()
             assertEquals("completed", state["sessionState"]); assertEquals(2, state["hrCount"])
             assertEquals(listOf(80, 0, 82, 83, 84, 85), sink.inputs.filter { it.eventType == "hr" }.map { it.payload().getInt("hr") })
-            assertEquals(sink.inputs.size, sink.processing.size)
+            assertEquals(sink.inputs.size + 4, sink.processing.size)
+            assertEquals(4, sink.processing.count { it.outcome == "accepted" })
+            assertEquals(4, sink.processing.count { it.outcome == "committed" })
+            assertTrue(sink.processing.filter { it.input.source == "app_command" }.all {
+                it.toJson().getString("command_id") == it.input.payload().getString("command_id")
+            })
             assertEquals(2, sink.processing.count { it.input.eventType == "search_result" && it.outcome == "ignored" })
             writer(service) {
                 val journal = field(service, "journal").get(service) as Journal
@@ -306,14 +311,37 @@ class RecorderServiceBridgeTest {
             command(service, "finish").getOrThrow(); hr(service, 74)
             assertEquals("active", diagnostic(service)["state"])
             val first = command(service, "stopDiagnostic").getOrThrow()
-            assertEquals(5L, first["savedEvents"]); assertEquals(5L, first["savedProcessing"])
+            assertEquals(9L, first["savedEvents"]); assertEquals(13L, first["savedProcessing"])
+            val exported = command(service, "exportDiagnostic", argument = first["captureId"] as String).getOrThrow()["path"] as String
+            File(exported).copyTo(File(host.getExternalFilesDir(null), "polar-d7-session-commands.zip"), overwrite = true)
+            java.util.zip.ZipFile(exported).use { zip ->
+                fun text(name: String) = zip.getInputStream(zip.getEntry(name)).bufferedReader().use { it.readText() }
+                val manifest = org.json.JSONObject(text("manifest.json"))
+                val bounds = org.json.JSONObject()
+                listOf("started_utc_ms", "started_elapsed_ns", "ended_utc_ms", "ended_elapsed_ns").forEach { bounds.put(it, manifest.get(it)) }
+                val fixture = org.json.JSONObject().put("fixture_version", 1).put("replay_ready", false)
+                    .put("capture_bounds", bounds).put("initial_state", org.json.JSONObject()
+                        .put("as_of_elapsed_ns", manifest.getString("started_elapsed_ns"))
+                        .put("configuration", manifest.getJSONObject("initial_configuration")))
+                    .put("limitations", org.json.JSONArray(listOf("initial_snapshot_activation_unverified")))
+                listOf("events", "processing").forEach { name -> fixture.put(name,
+                    org.json.JSONArray(text("$name.jsonl").lineSequence().filter { it.isNotBlank() }.map { org.json.JSONObject(it) }.toList())) }
+                val replay = PolarReplay.fixture(fixture)
+                val repeated = PolarReplay.fixture(fixture)
+                assertEquals(replay.records, repeated.records); assertEquals(replay.observations, repeated.observations)
+                assertEquals("completed", replay.session.state); assertEquals(2, replay.snapshot.hrCount)
+                assertEquals(listOf(71, 73), replay.records.map { org.json.JSONObject(it) }.filter { it.getString("kind") == "hr" }
+                    .map { it.getJSONObject("payload").getInt("bpm") })
+                assertEquals(4, replay.outcomes.count { it.endsWith(":committed") })
+                assertEquals(9, replay.outcomes.size)
+            }
             assertEquals(2, service.snapshot.hrCount)
             command(service, "startDiagnostic").getOrThrow(); command(service, "start").getOrThrow(); hr(service, 80)
             command(service, "stopDiagnostic").getOrThrow()
             assertTrue(service.snapshot.recording)
             hr(service, 81); command(service, "finish").getOrThrow()
             assertEquals(2, service.snapshot.hrCount)
-            assertEquals(1L, diagnostic(service)["savedEvents"])
+            assertEquals(2L, diagnostic(service)["savedEvents"])
         } finally { command(service, "stopDiagnostic"); command(service, "finish"); unbind(binding) }
     }
     @Test fun incompleteCaptureStopReturnsErrorAndDoesNotStopRecording() {
@@ -381,7 +409,7 @@ class RecorderServiceBridgeTest {
             host.contentResolver.openInputStream(uri)!!.use { assertEquals('P'.code, it.read()); assertEquals('K'.code, it.read()) }
             java.util.zip.ZipFile(file).use { zip ->
                 val manifest = org.json.JSONObject(zip.getInputStream(zip.getEntry("manifest.json")).bufferedReader().readText())
-                assertEquals("stage0-777a33b-polar-export-d5", manifest.getString("core_version"))
+                assertEquals("stage0-777a33b-polar-replay-d7", manifest.getString("core_version"))
                 assertEquals(android.os.Build.VERSION.RELEASE, manifest.getJSONObject("phone").getString("android_release"))
             }
             assertTrue(service.snapshot.recording)

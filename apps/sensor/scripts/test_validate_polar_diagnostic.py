@@ -92,6 +92,20 @@ class ValidationTest(unittest.TestCase):
         self.make(events, processing, state='incomplete')
         self.assertEqual(24, validate(self.path)['saved_events'])
 
+    def test_command_phases_are_ordered_and_complete_requires_terminal_result(self):
+        event = copy.deepcopy(next(e for e in EXAMPLES['events'] if e['source'] == 'app_command'))
+        accepted = copy.deepcopy(EXAMPLES['processing'][0])
+        accepted.update(input_sequence=event['sequence'], command_id=event['payload']['command_id'], outcome='accepted')
+        committed = dict(accepted, processing_sequence=accepted['processing_sequence'] + 1, outcome='committed')
+        self.make([event], [accepted, committed])
+        self.assertTrue(validate(self.path)['valid'])
+        for phases in ([accepted], [committed, dict(accepted, processing_sequence=committed['processing_sequence'] + 1)],
+                       [accepted, dict(committed, outcome='accepted')], [accepted, dict(committed, outcome='applied')]):
+            self.make([event], phases)
+            with self.assertRaises(Invalid): validate(self.path)
+        self.make([event], [accepted], state='interrupted')
+        self.assertTrue(validate(self.path)['unknown_tail'])
+
     def test_bad_hash_counts_version_fields_and_firmware(self):
         event, processed = self.pair(10)
         mutations = [lambda m: m.update(schema_version=2), lambda m: m.update(unexpected=True),

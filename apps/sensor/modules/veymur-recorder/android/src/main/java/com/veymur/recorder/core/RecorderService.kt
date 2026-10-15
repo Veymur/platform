@@ -128,67 +128,9 @@ class RecorderService : Service() {
     private fun enqueuePolarInput(delivery: PolarInputDelivery): Unit = enqueue {
         polarInputs.process(delivery, { session }, ::processPolarInput)
     }
-    /** Shared processing entry: it consumes owned input, never an SDK callback object. */
-    private fun processPolarInput(event: PolarInputEvent): Boolean {
-        val payload = event.payload()
-        when (event.eventType) {
-            "bluetooth" -> {
-                if (!payload.getBoolean("powered")) snapshot = snapshot.copy(status = "Bluetooth disabled", connected = null, hr = null)
-                record("bluetooth", JSONObject().put("powered", payload.getBoolean("powered")))
-            }
-            "connecting" -> snapshot = snapshot.copy(status = "Connecting to ${event.deviceId}…")
-            "connected" -> {
-                snapshot = snapshot.copy(connected = event.deviceId, status = "Sensor connected")
-                record("connected", JSONObject().put("device", event.deviceId))
-            }
-            "disconnected" -> {
-                snapshot = snapshot.copy(connected = null, hr = null, status = "Connection lost. The SDK is reconnecting")
-                record("disconnected", JSONObject().put("device", event.deviceId))
-            }
-            "battery_level" -> {
-                snapshot = snapshot.copy(battery = payload.getInt("level"))
-                record("sensor_battery", JSONObject().put("percent", payload.getInt("level")))
-            }
-            "device_info" -> when (event.callbackVariant) {
-                "disInformationReceived.uuid" -> {
-                    deviceDetails[payload.getString("uuid")] = payload.getString("value")
-                    record("device_info", payload)
-                }
-                "disInformationReceived.key" -> {
-                    // Preserve the existing session export's display field; diagnostic input is structured.
-                    val details = "DisInfo(key=${payload.getString("key")}, value=${payload.getString("value")})"
-                    deviceDetails["dis"] = details
-                    record("device_info", JSONObject().put("details", details))
-                }
-                else -> return false
-            }
-            "hr" -> {
-                snapshot = snapshot.copy(hr = payload.getInt("hr").takeIf { it > 0 },
-                    lastHrElapsed = event.receivedElapsedNs / 1_000_000, lastHrElapsedNs = event.receivedElapsedNs)
-                if (snapshot.recording && !snapshot.paused) {
-                    record("hr", JSONObject().put("bpm", payload.getInt("hr")).put("contact", payload.getBoolean("contactStatus"))
-                        .put("contact_supported", payload.getBoolean("contactStatusSupported")).put("ppg_quality", payload.getInt("ppgQuality"))
-                        .put("active_ms", clock.activeMs()).put("timestamp_source", "phone_receipt"))
-                    snapshot = snapshot.copy(hrCount = snapshot.hrCount + 1)
-                }
-            }
-            "search_result" -> {
-                val info = payload.getJSONObject("info")
-                if (!info.getString("name").contains("Sense", ignoreCase = true) || !info.getBoolean("isConnectable")) return false
-                val device = PolarDeviceInfo(info.getString("deviceId"), info.getString("address"), info.getInt("rssi"),
-                    info.getString("name"), info.getBoolean("isConnectable"), info.getBoolean("hasHeartRateService"),
-                    info.getBoolean("hasFileSystemService"), info.getBoolean("hasSAGRFCFileSystem"))
-                snapshot = snapshot.copy(devices = (snapshot.devices + device).distinctBy { it.deviceId })
-            }
-            "search_error" -> snapshot = snapshot.copy(errorCode = "DISCOVERY_ERROR", status = "Sensor discovery failed; retry")
-            "search_ended" -> {
-                if (payload.getString("reason") != "timeout") return false
-                snapshot = snapshot.copy(status = if (snapshot.devices.isEmpty()) "Sensor not found. Turn it on and search again" else "Select your sensor")
-            }
-            else -> return false // Diagnostic-only callbacks retain their input without adding recorder behavior.
-        }
-        return true
-    }
+    private val control = RecorderControl({ engine!! }, { snapshot }, { snapshot = it }, System::currentTimeMillis)
+    private val processor = PolarRecorderProcessor({ snapshot }, { snapshot = it }, clock, deviceDetails, ::record)
+    private fun processPolarInput(event: PolarInputEvent): Boolean = processor.process(event)
     private val tick = object : Runnable {
         override fun run() {
             if (shuttingDown) return
@@ -268,21 +210,17 @@ class RecorderService : Service() {
             api.connectToDevice(id)
         } catch (e: Exception) { throw RecorderError("CONNECTION_ERROR", "Unable to connect to selected sensor") }
     }
-    private fun start(route: Boolean, done: (Result<Map<String, Any?>>) -> Unit) {
+    private fun start(route: Boolean, command: PolarInputDelivery?, done: (Result<Map<String, Any?>>) -> Unit) {
         if (snapshot.connected == null) throw RecorderError("NOT_CONNECTED", "Connect a sensor first")
         if (snapshot.recording || starting || finishing || session != null) throw RecorderError("INVALID_STATE", "A session is already active")
         starting = true
-        val device = snapshot.connected!!
         try {
             routeEnabled = route && gps.isLocationEnabled &&
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             holdResources()
-            workerCommand(done) {
-                val id = engine!!.start(device, routeEnabled, JSONObject().put("route_requested", route).put("route_enabled", routeEnabled)
+            workerCommand(done, command) {
+                val id = control.start(route, routeEnabled, JSONObject().put("route_requested", route).put("route_enabled", routeEnabled)
                     .put("device_info", JSONObject(deviceDetails.toMap())).put("phone_battery_percent", phoneBattery()))
-                snapshot = snapshot.copy(recording = true, paused = false, errorCode = null, hrCount = 0, gpsCount = 0, activeMs = 0,
-                    lastCommit = System.currentTimeMillis(), status = "Recording on this phone",
-                    gpsStatus = if (routeEnabled) "Waiting for coordinates" else if (route) "GPS unavailable; recording heart rate only" else "Route disabled")
                 main.post { starting = false; if (routeEnabled && snapshot.recording && !snapshot.paused) requestGps() }
                 mapOf("sessionId" to id)
             }
@@ -307,13 +245,12 @@ class RecorderService : Service() {
         val hadSession = session != null
         finishing = true
         if (hadSession) { snapshot = snapshot.copy(status = "Saving recording…"); publish() }
-        val id = try { engine!!.finish(phoneBattery()) } catch (e: Exception) { finishing = false; throw e }
-        snapshot = snapshot.copy(recording = false, paused = false, errorCode = null, activeMs = clock.activeMs(),
-            lastCommit = if (hadSession) System.currentTimeMillis() else snapshot.lastCommit, status = message)
+        val id = try { control.finish(phoneBattery(), message) } catch (e: Exception) { finishing = false; throw e }
         main.post { stopResources(); finishing = false }
         return mapOf("sessionId" to id, "state" to "completed")
     }
     fun execute(name: String, argument: String? = null, route: Boolean = false, done: (Result<Map<String, Any?>>) -> Unit) {
+        val command = if (name in setOf("start", "pause", "resume", "finish")) polarInputs.command(name, route) else null
         main.post {
             try {
                 if (shuttingDown) throw RecorderError("SERVICE_UNAVAILABLE", "Recorder service stopped")
@@ -330,7 +267,7 @@ class RecorderService : Service() {
                         val id = argument?.takeIf { it.isNotBlank() } ?: throw RecorderError("INVALID_ARGUMENT", "Device identifier required")
                         initializePolar(); connect(id); done(Result.success(mapOf("accepted" to true)))
                     }
-                    "start" -> start(route, done)
+                    "start" -> start(route, command, done)
                     "startDiagnostic" -> startDiagnostic(done)
                     "stopDiagnostic" -> stopDiagnostic(done)
                     "listDiagnosticCaptures" -> diagnosticCommand(diagnosticJournal!!.listCaptures().thenApply { captures ->
@@ -347,15 +284,11 @@ class RecorderService : Service() {
                             diagnosticCommand(diagnosticExports.delete(id).thenApply { deleted -> mapOf("deleted" to deleted) }, done, id)
                         }
                     }
-                    else -> workerCommand(done) {
+                    else -> workerCommand(done, command) {
                         when (name) {
                             "getSnapshot" -> dto()
                             "pause", "resume" -> {
-                                val previousState = engine!!.state
-                                if (name == "pause") engine!!.pause() else engine!!.resume()
-                                snapshot = snapshot.copy(paused = engine!!.state == "paused", activeMs = clock.activeMs(),
-                                    lastCommit = if (previousState != engine!!.state) System.currentTimeMillis() else snapshot.lastCommit, errorCode = null,
-                                    status = if (engine!!.state == "paused") "Paused" else "Recording on this phone")
+                                control.pauseOrResume(name)
                                 main.post { if (snapshot.paused) gps.removeUpdates(locations) else if (routeEnabled && snapshot.recording) requestGps() }
                                 mapOf("sessionId" to engine!!.id, "state" to engine!!.state)
                             }
@@ -368,13 +301,15 @@ class RecorderService : Service() {
                         }
                     }
                 }
-            } catch (e: Exception) { done(Result.failure(e)) }
+            } catch (e: Exception) { polarInputs.commandResult(command, session, "rejected", e); done(Result.failure(e)) }
         }
     }
-    private fun workerCommand(done: (Result<Map<String, Any?>>) -> Unit, action: () -> Map<String, Any?>) {
+    private fun workerCommand(done: (Result<Map<String, Any?>>) -> Unit, command: PolarInputDelivery? = null, action: () -> Map<String, Any?>) {
+        polarInputs.commandResult(command, session, "accepted")
         worker.post {
-            try { val result = action(); publish(); main.post { done(Result.success(result)) } }
+            try { val result = polarInputs.commandProcess(command, { session }, action); publish(); main.post { done(Result.success(result)) } }
             catch (e: Exception) {
+                if (command?.event?.payload()?.optString("name") == "start") main.post { starting = false; stopResources() }
                 if (e !is RecorderError) { fail(e); main.post { starting = false }; publish() }
                 main.post { done(Result.failure(if (e is RecorderError) e else RecorderError("STORAGE_ERROR", "Local storage operation failed; saved portion retained"))) }
             }
@@ -388,13 +323,12 @@ class RecorderService : Service() {
         main.post { listeners.forEach { it(state) } }
     }
     private fun dto(): Map<String, Any?> {
-        val age = snapshot.lastHrElapsed.takeIf { it > 0 }?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0) }
-        val fresh = snapshot.connected != null && snapshot.hr != null && age != null && age <= 5000
+        val heartRate = snapshot.heartRateAt(SystemClock.elapsedRealtimeNanos())
         return mapOf("revision" to snapshot.revision, "ready" to snapshot.ready, "status" to snapshot.status,
             "sessionId" to engine?.id, "sessionState" to (if (finishing && session != null) "finishing" else engine?.state ?: "preparation"),
             "connectedDeviceId" to snapshot.connected, "batteryPercent" to snapshot.battery.takeIf { snapshot.connected != null },
-            "hr" to snapshot.hr.takeIf { fresh }, "hrAgeMs" to age,
-            "hrStatus" to if (fresh) "fresh" else if (snapshot.hr != null && snapshot.connected != null) "stale" else "missing",
+            "hr" to heartRate.value, "hrAgeMs" to heartRate.ageMs,
+            "hrStatus" to heartRate.status,
             "devices" to snapshot.devices.map { mapOf("id" to it.deviceId, "name" to it.name, "address" to it.address) },
             "hrCount" to snapshot.hrCount, "gpsCount" to snapshot.gpsCount, "activeMs" to snapshot.activeMs,
             "lastCommitUtcMs" to snapshot.lastCommit.takeIf { it > 0 }, "gpsStatus" to snapshot.gpsStatus,
@@ -459,7 +393,7 @@ class RecorderService : Service() {
             val environment = JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
                 .put("android_api", Build.VERSION.SDK_INT).put("android_release", Build.VERSION.RELEASE)
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName ?: "unknown")
-                .put("core_version", "stage0-777a33b-polar-export-d5").put("device_info", JSONObject(deviceDetails.toMap()))
+                .put("core_version", "stage0-777a33b-polar-replay-d7").put("device_info", JSONObject(deviceDetails.toMap()))
             diagnosticJournal!!.startCapture(PolarInputBoundary.processRunId, configuration.toString(), environment.toString()).whenComplete { capture, error ->
                 worker.post {
                     diagnosticPending = false

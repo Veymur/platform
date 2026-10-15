@@ -21,7 +21,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Called exclusively on the recorder worker. Every append is a committed transaction. */
-class Journal(private val context: Context) {
+class Journal(private val context: Context) : RecorderSessionStore {
     private val db: SQLiteDatabase
     init {
         System.loadLibrary("sqlcipher")
@@ -71,7 +71,7 @@ class Journal(private val context: Context) {
         }
         return ids.size
     }
-    fun begin(device: String, gps: Boolean, configuration: JSONObject? = null): String = transaction {
+    override fun begin(device: String, gps: Boolean, configuration: JSONObject?): String = transaction {
         val id = UUID.randomUUID().toString()
         db.insertOrThrow("sessions", null, ContentValues().apply {
             put("id", id); put("device", device); put("started", System.currentTimeMillis())
@@ -86,11 +86,11 @@ class Journal(private val context: Context) {
         try { val value = action(); db.setTransactionSuccessful(); return value }
         finally { db.endTransaction() }
     }
-    fun transition(id: String, event: String, state: String, activeMs: Long, payload: JSONObject = JSONObject()) = transaction {
+    override fun transition(id: String, event: String, state: String, activeMs: Long, payload: JSONObject) = transaction {
         append(id, event, payload)
         updateState(id, state, activeMs)
     }
-    fun append(id: String, kind: String, payload: JSONObject) {
+    override fun append(id: String, kind: String, payload: JSONObject) {
         db.beginTransaction()
         try {
             db.insertOrThrow("records", null, ContentValues().apply {

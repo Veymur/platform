@@ -70,12 +70,14 @@ class DiagnosticStore(context: Context, policy: DiagnosticPolicy) : AutoCloseabl
             result
         }
     }
+    fun unprocessedInputs(id: String): Long = scalar("SELECT COUNT(*) FROM diagnostic_events e WHERE e.capture_id=? AND NOT EXISTS (SELECT 1 FROM diagnostic_processing p WHERE p.capture_id=e.capture_id AND p.input_sequence=e.sequence)", arrayOf(id))
+
     fun recoverInterrupted(): Int {
         owner()
         val unfinished = list().filter { it.state == "active" || it.state == "stopping" }
         transaction {
             for (status in unfinished) {
-                val unmatched = scalar("SELECT COUNT(*) FROM diagnostic_events e WHERE e.capture_id=? AND NOT EXISTS (SELECT 1 FROM diagnostic_processing p WHERE p.capture_id=e.capture_id AND p.input_sequence=e.sequence)", arrayOf(status.captureId))
+                val unmatched = unprocessedInputs(status.captureId)
                 val recovered = status.copy(state = "interrupted", endedUtcMs = null, endedElapsedNs = null,
                     receivedEvents = null, acceptedEvents = null, receivedProcessing = null, acceptedProcessing = null,
                     unprocessedInputs = unmatched, unknownTail = true, lastErrorCode = status.lastErrorCode ?: "unclean_shutdown")

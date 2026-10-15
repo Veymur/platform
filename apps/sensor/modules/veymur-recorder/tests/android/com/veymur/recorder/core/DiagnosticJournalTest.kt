@@ -43,6 +43,32 @@ class DiagnosticJournalTest {
             assertNull(await(reopened.readInput(capture.captureId, 1))); assertTrue(await(reopened.listCaptures()).isEmpty())
         } finally { close(reopened) }
     }
+    @Test fun commandAcceptanceDoesNotFinishPendingProcessingAndBothPhasesSurviveExport() {
+        val journal = DiagnosticJournal(DiagnosticTestData.context(), DiagnosticTestData.policy())
+        try {
+            val capture = DiagnosticTestData.start(journal)
+            val input = DiagnosticTestData.input(capture, 1).copy(source = "app_command", eventType = "command_requested",
+                callbackVariant = "execute", payloadJson = JSONObject().put("command_id", "synthetic-command").put("name", "pause")
+                    .put("argument", JSONObject.NULL).put("route", false).toString())
+            capture.offerInput(input)
+            capture.offerProcessing(DiagnosticTestData.processing(input).copy(outcome = "accepted"))
+            await(journal.flush(capture))
+            assertEquals(1L, capture.status.unprocessedInputs)
+            val stopped = capture.stop()
+            assertFalse(stopped.isDone)
+            capture.offerProcessing(DiagnosticTestData.processing(input).copy(processingSequence = 2, outcome = "rejected"))
+            val status = await(stopped)
+            assertEquals("complete", status.state)
+            assertEquals(1L, status.savedEvents); assertEquals(2L, status.savedProcessing)
+            assertEquals(0L, status.unprocessedInputs)
+            await(journal.beginExport(capture.captureId))
+            try {
+                val rows = await(journal.exportPage(capture.captureId, true, 0))
+                assertEquals(listOf("accepted", "rejected"), rows.map { JSONObject(it.json).getString("outcome") })
+                assertTrue(rows.all { JSONObject(it.json).getString("command_id") == "synthetic-command" })
+            } finally { await(journal.endExport(capture.captureId)) }
+        } finally { close(journal) }
+    }
     @Test fun recordAndByteBoundsStopIncompleteAndKeepKnownCounts() {
         for (bytes in listOf(2L * 1024 * 1024, 1024L)) {
             val policy = DiagnosticTestData.policy().copy(queueRecords = 2, batchRecords = 2, queueBytes = bytes)

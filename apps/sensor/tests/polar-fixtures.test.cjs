@@ -22,7 +22,10 @@ for (const kind of ['synthetic', 'hardware']) {
       for (const processing of fixture.processing) assert.ok(validators.processing(processing), JSON.stringify(validators.processing.errors));
       const expected = read(join(directory, name.replace('.fixture.json', '.expected.json')));
       assert.equal(expected.fixture, name); assert.equal(expected.expectations_version, 1);
-      assert.equal(expected.observed_processing_is_not_oracle, true); assert.equal(expected.replay_assertions_executed, false);
+      assert.equal(expected.observed_processing_is_not_oracle, true); assert.equal(expected.replay_assertions_executed, true);
+      assert.equal(expected.replay_runner, 'modules/veymur-recorder/tests/android/com/veymur/recorder/core/PolarReplayTest.kt');
+      assert.equal(expected.native_replay_assertions.session_state, 'preparation');
+      assert.equal(expected.native_replay_assertions.hr_count, 0);
       const basis = new Set(expected.basis.map(item => item.id));
       assert.equal(basis.size, expected.basis.length);
       for (const expectation of expected.data_assertions) {

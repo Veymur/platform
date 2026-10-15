@@ -99,7 +99,10 @@ class DiagnosticJournal(
             val a = capture(handle)
             if (!a.acceptProcessing) return
             // A rejected input is not persisted; its later processing must not create an orphan row.
-            if (!a.expectedProcessing.remove(processing.input.sequence)) return
+            if (processing.input.sequence !in a.expectedProcessing) return
+            if (processing.input.source != "app_command" || processing.outcome != "accepted") {
+                a.expectedProcessing.remove(processing.input.sequence)
+            }
             a.status = a.status.copy(receivedProcessing = a.status.receivedProcessing!! + 1)
             if (processing.input.captureId != handle.captureId || processing.input.processRunId != a.status.processRunId) {
                 a.status = a.status.copy(knownLostProcessing = a.status.knownLostProcessing + 1); fault(a, "serialization_failed"); return
@@ -310,10 +313,11 @@ class DiagnosticJournal(
         fault(a, code, error)
     }
     private fun finish(store: DiagnosticStore, a: Capture) {
+        val unprocessed = store.unprocessedInputs(a.status.captureId)
         val candidate = synchronized(gate) {
             a.acceptProcessing = false
             a.status.copy(state = if (a.status.lastErrorCode == null) "complete" else "incomplete",
-                unprocessedInputs = (a.status.savedEvents - a.status.savedProcessing).coerceAtLeast(0))
+                unprocessedInputs = unprocessed)
         }
         try {
             store.commit(candidate, emptyList())

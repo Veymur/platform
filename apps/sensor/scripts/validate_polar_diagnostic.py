@@ -244,6 +244,10 @@ def validate(path):
                             if parent[1] is None:
                                 require(db.execute('SELECT 1 FROM processed WHERE input=?', (row['input_sequence'],)).fetchone() is None, 'duplicate callback processing')
                                 require(row['outcome'] in ('applied', 'ignored', 'failed'), 'callback processing outcome')
+                            else:
+                                phases = [item[0] for item in db.execute('SELECT outcome FROM processed WHERE input=?', (row['input_sequence'],))]
+                                require(row['outcome'] in ('accepted', 'rejected', 'committed', 'failed'), 'command processing outcome')
+                                require(not phases or phases == ['accepted'] and row['outcome'] != 'accepted', 'duplicate/out-of-order command phase')
                             db.execute('INSERT INTO processed VALUES(?,?)', (row['input_sequence'], row['outcome']))
                 descriptor = manifest['files'][filename]
                 require((size, count, digest.hexdigest()) == (descriptor['bytes'], descriptor['records'], descriptor['sha256']), 'JSONL hash/size/record count mismatch')
@@ -267,11 +271,12 @@ def validate(path):
             for received, saved, lost in [('received_events', events, 'known_lost_events'), ('received_processing', processing, 'known_lost_processing')]:
                 if checkpoint.get(received) is not None:
                     require(checkpoint[received] >= saved + checkpoint.get(lost, 0), 'received count below saved plus known losses')
+            unfinished_commands = db.execute("SELECT COUNT(*) FROM inputs i WHERE i.command IS NOT NULL AND NOT EXISTS (SELECT 1 FROM processed p WHERE p.input=i.seq AND p.outcome IN ('committed','rejected','failed'))").fetchone()[0]
             state = manifest['state']
             if state == 'complete':
                 require(not fault_seen and end is not None and not checkpoint['unknown_tail'] and checkpoint['known_lost_events'] == 0 and
                         checkpoint.get('known_lost_processing', 0) == 0 and checkpoint.get('checkpoint_persisted', True) and
-                        checkpoint.get('last_error_code') is None and checkpoint['received_events'] == events and unmatched == 0,
+                        checkpoint.get('last_error_code') is None and checkpoint['received_events'] == events and unmatched == 0 and unfinished_commands == 0,
                         'complete capture has losses/missing processing/unfinished checkpoint')
                 require(checkpoint.get('received_processing', processing) == processing, 'complete processing count mismatch')
             if state == 'interrupted':

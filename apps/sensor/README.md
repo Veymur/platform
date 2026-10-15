@@ -94,6 +94,10 @@ The current screen is “Veymur · recording validation”: storage becomes read
 
 An incompatible native binary produces a rebuild/reinstall error. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, registration, permissions or plugin/config changes require prebuild and a new installation. JS reload updates only JS. This **debug development APK** uses Metro; it supports the JS reload scenarios. It is separate from the autonomous diagnostic variant below.
 
+## D8 hardware validation
+
+The [H01–H07 protocol](../../docs/diagnostic/polar-diagnostic-d8-hardware-protocol.md) covers Galaxy A23 / Android 14 and Polar Verity Sense capture/session comparison, locking, JS detach, Bluetooth recovery, offline operation, interruption and paired battery/load measurements. The [D8 preparation report](../../docs/diagnostic/polar-diagnostic-d8-implementation.md) records the offline APK hash and actual results. Hardware validation is pending device access; emulator results do not close it. Preserve an existing installation and verify its signing certificate before replacing it.
+
 ## Autonomous diagnostic APK — embedded JS
 
 After installing dependencies and generating Android, run:

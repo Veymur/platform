@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 from zipfile import ZipFile
+from xml.etree import ElementTree
 
 
 def inspect(apk: Path) -> dict:
@@ -28,7 +29,11 @@ def inspect(apk: Path) -> dict:
         raise ValueError("Unexpected min/target SDK")
     if "application-debuggable" in badging or "debuggable(0x0101000f)=true" in manifest:
         raise ValueError("Expected a non-debuggable release variant")
-    if not core or core.group(1) != "stage0-777a33b-diagnostic-v3":
+    source_manifest = Path(__file__).resolve().parents[1] / "modules/veymur-recorder/android/src/main/AndroidManifest.xml"
+    android = "{http://schemas.android.com/apk/res/android}"
+    expected_core = next((item.get(android + "value") for item in ElementTree.parse(source_manifest).iter("meta-data")
+                          if item.get(android + "name") == "com.veymur.recorder.CORE_VERSION"), None)
+    if not expected_core or not core or core.group(1) != expected_core:
         raise ValueError("Unexpected native core identity")
     if "com.veymur.recorder.core.RecorderService" not in manifest or "com.veymur.sensor.exports" not in manifest:
         raise ValueError("Recorder service/provider missing")

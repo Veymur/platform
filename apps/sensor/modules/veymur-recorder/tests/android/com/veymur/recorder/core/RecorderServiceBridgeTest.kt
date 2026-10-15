@@ -224,4 +224,34 @@ class RecorderServiceBridgeTest {
         } finally { release.countDown(); unbind(binding) }
     }
 
+    @Test fun actualDiagnosticDatabaseFullDoesNotStopRecorderOrLoseItsSessionCommit() {
+        val binding = bind(); val service = binding.service
+        val diagnostic = DiagnosticJournal(DiagnosticTestData.context(), DiagnosticTestData.policy().copy(maxDatabaseBytes = 1024 * 1024))
+        try {
+            isolated(service); foreground(service)
+            val id = command(service, "start").getOrThrow()["sessionId"] as String
+            val capture = DiagnosticTestData.start(diagnostic, PolarInputBoundary.processRunId)
+            val boundary = field(service, "polarInputs").get(service) as PolarInputBoundary
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            boundary.setSink(capture)
+            var count = 0
+            while (capture.status.lastErrorCode == null && count++ < 100) {
+                callbacks.disInformationReceived("SYNTHETIC", UUID.fromString("00002a26-0000-1000-8000-00805f9b34fb"), "x".repeat(60000))
+                command(service, "getSnapshot").getOrThrow()
+                runCatching { DiagnosticTestData.await(diagnostic.flush(capture)) }
+            }
+            assertEquals("write_failed", capture.status.lastErrorCode)
+            callbacks.hrNotificationReceived("SYNTHETIC", PolarHrData.PolarHrSample(88, 0, 0, emptyList(), emptyList(), false, true, true))
+            val state = command(service, "getSnapshot").getOrThrow()
+            assertEquals("recording", state["sessionState"]); assertNull(state["errorCode"])
+            assertEquals(1, state["hrCount"])
+            assertEquals(id, command(service, "finish").getOrThrow()["sessionId"])
+            assertEquals("completed", command(service, "getSnapshot").getOrThrow()["sessionState"])
+            boundary.setSink(null)
+        } finally {
+            runCatching { DiagnosticTestData.await(diagnostic.closeAsync()) }
+            command(service, "finish"); unbind(binding)
+        }
+    }
+
 }

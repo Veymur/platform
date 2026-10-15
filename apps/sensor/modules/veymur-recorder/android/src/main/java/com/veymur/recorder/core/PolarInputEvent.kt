@@ -44,7 +44,7 @@ data class PolarInputProcessing(
         .put("outcome", outcome).put("error", errorJson?.let(::JSONObject) ?: JSONObject.NULL)
 }
 
-/** D2 test seam. Offers must be non-blocking; durable, bounded storage belongs to D3. */
+/** Non-blocking native sink. D3 DiagnosticCapture supplies bounded asynchronous storage. */
 interface PolarDiagnosticSink {
     val captureId: String
     fun offerInput(event: PolarInputEvent)
@@ -60,7 +60,7 @@ class PolarInputBoundary(
     private val dispatch: (PolarInputDelivery) -> Unit,
 ) {
     companion object {
-        private val processRunId = UUID.randomUUID().toString()
+        val processRunId = UUID.randomUUID().toString()
         private val inputSequence = AtomicLong()
         private val processingSequence = AtomicLong()
     }

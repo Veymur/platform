@@ -84,6 +84,20 @@ export class RecorderController {
     await this.client.start({ routeRequested: this.view.routeRequested });
     if (current()) this.update({ message: 'Recording started on this phone.' });
   });
+  startDiagnostic = () => this.run('Start diagnostics', async current => {
+    await this.client.ensureActivity();
+    const granted = await this.permissions.requestBluetooth();
+    if (!current()) return;
+    if (!granted) { this.update({ message: 'Bluetooth permission denied. Diagnostics remain off. Retry or open App permissions.' }); return; }
+    await this.permissions.notifications();
+    if (!current()) return;
+    await this.client.startDiagnostic();
+    if (current()) this.update({ message: 'Diagnostic capture enabled on this phone.' });
+  });
+  stopDiagnostic = () => this.run('Stop diagnostics', async current => {
+    await this.client.stopDiagnostic();
+    if (current()) this.update({ message: 'Diagnostic capture saved and closed.' });
+  });
   pause = () => this.run('Pause', async () => { await this.client.pause(); });
   resume = () => this.run('Resume', async () => { await this.client.resume(); });
   finish = () => this.run('Finish', async current => {

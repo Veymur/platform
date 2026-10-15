@@ -14,7 +14,7 @@ function load() {
 }
 const dto = (revision = 1) => ({ revision, ready: true, status: 'Ready', sessionId: null, sessionState: 'preparation',
   connectedDeviceId: null, batteryPercent: null, hr: null, hrAgeMs: null, hrStatus: 'missing', devices: [],
-  hrCount: 0, gpsCount: 0, activeMs: 0, lastCommitUtcMs: null, gpsStatus: 'Route disabled', routeEnabled: false, recoveredCount: 0, errorCode: null });
+  hrCount: 0, gpsCount: 0, activeMs: 0, lastCommitUtcMs: null, gpsStatus: 'Route disabled', routeEnabled: false, recoveredCount: 0, errorCode: null, diagnostic: { captureId: null, state: 'off', savedEvents: 0, savedProcessing: 0, knownLostEvents: 0, knownLostProcessing: 0, unknownTail: false, checkpointPersisted: true, lastErrorCode: null } });
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function fixture() {
   let resolveRead;
@@ -63,4 +63,13 @@ test('initial service read failure reaches error callback and stops after unsubs
   const client = new RecorderClient(() => ({ addListener: () => ({ remove() {} }), getSnapshot: () => new Promise((_, reject) => { rejectRead = reject; }) }));
   const off = client.subscribe(assert.fail, e => errors.push(e.code)); await flush();
   rejectRead({ code: 'NOT_READY' }); await flush(); assert.deepEqual(errors, ['NOT_READY']); off();
+});
+test('diagnostic status preserves loss and checkpoint errors and excludes raw native data', () => {
+  const { decodeSnapshot } = load();
+  const status = { captureId: 'capture', state: 'incomplete', savedEvents: 9, savedProcessing: 8, knownLostEvents: 1, knownLostProcessing: 2, unknownTail: true, checkpointPersisted: false, lastErrorCode: 'write_failed' };
+  const value = { ...dto(), diagnostic: { ...status, payload: 'private', events: ['raw'] } };
+  assert.deepEqual(JSON.parse(JSON.stringify(decodeSnapshot(value).diagnostic)), status);
+  for (const bad of [undefined, null, { ...status, savedEvents: -1 }, { ...status, unknownTail: undefined }, { ...status, state: 'saved' }]) {
+    assert.throws(() => decodeSnapshot({ ...dto(), diagnostic: bad }), e => e.code === 'INCOMPATIBLE_BINARY');
+  }
 });

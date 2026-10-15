@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.polar.sdk.api.model.PolarDeviceInfo
 import com.polar.sdk.api.model.PolarHrData
 import com.veymur.recorder.requireRecorderActivity
+import com.veymur.recorder.requireRecorderActionActivity
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.junit.Assert.*
 import org.junit.Test
@@ -254,4 +255,106 @@ class RecorderServiceBridgeTest {
         }
     }
 
+    private fun isolateDiagnostics(service: RecorderService) {
+        writer(service) {
+            DiagnosticTestData.await((field(service, "diagnosticJournal").get(service) as DiagnosticJournal).closeAsync())
+            val journal = DiagnosticJournal(DiagnosticTestData.context(), DiagnosticPolicy(minFreeBytes = 0))
+            DiagnosticTestData.await(journal.ready)
+            field(service, "diagnosticJournal").set(service, journal)
+        }
+    }
+    private fun visible(service: RecorderService, value: Boolean) = instrumentation.runOnMainSync { service.activityVisible(value) }
+    @Suppress("UNCHECKED_CAST")
+    private fun diagnostic(service: RecorderService) = command(service, "getSnapshot").getOrThrow()["diagnostic"] as Map<String, Any?>
+    private fun hr(service: RecorderService, value: Int) {
+        val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+        callbacks.hrNotificationReceived("SYNTHETIC", PolarHrData.PolarHrSample(value, 0, 0, emptyList(), emptyList(), false, true, true))
+        writer(service) { }
+    }
+    @Test fun captureAloneSurvivesUnbindAndRequiresExplicitVisibleStart() {
+        var binding = bind(); val service = binding.service
+        try {
+            isolated(service); isolateDiagnostics(service); foreground(service); visible(service, false)
+            assertEquals("NO_ACTIVITY", (command(service, "startDiagnostic").exceptionOrNull() as RecorderError).code)
+            assertEquals("off", diagnostic(service)["state"])
+            visible(service, true)
+            val id = command(service, "startDiagnostic").getOrThrow()["captureId"]
+            assertEquals(id, command(service, "startDiagnostic").getOrThrow()["captureId"])
+            assertNull(field(service, "api").get(service)) // diagnostics must not initialize Polar
+            hr(service, 77); visible(service, false)
+            unbind(binding); SystemClock.sleep(1200); binding = bind(); assertSame(service, binding.service)
+            hr(service, 78)
+            assertNull(command(service, "getSnapshot").getOrThrow()["sessionId"])
+            val stopped = command(service, "stopDiagnostic").getOrThrow()
+            assertEquals("complete", stopped["state"]); assertEquals(2L, stopped["savedEvents"]); assertEquals(2L, stopped["savedProcessing"])
+            assertEquals(stopped, command(service, "stopDiagnostic").getOrThrow())
+        } finally { command(service, "stopDiagnostic"); unbind(binding) }
+    }
+    @Test fun captureAndSessionHaveIndependentStopOrdersAndCaptureIncludesPauseAndAfterFinish() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); isolateDiagnostics(service); foreground(service); visible(service, true)
+            command(service, "startDiagnostic").getOrThrow(); hr(service, 70)
+            command(service, "start").getOrThrow(); hr(service, 71)
+            command(service, "pause").getOrThrow(); hr(service, 72)
+            command(service, "resume").getOrThrow(); hr(service, 73)
+            command(service, "finish").getOrThrow(); hr(service, 74)
+            assertEquals("active", diagnostic(service)["state"])
+            val first = command(service, "stopDiagnostic").getOrThrow()
+            assertEquals(5L, first["savedEvents"]); assertEquals(5L, first["savedProcessing"])
+            assertEquals(2, service.snapshot.hrCount)
+            command(service, "startDiagnostic").getOrThrow(); command(service, "start").getOrThrow(); hr(service, 80)
+            command(service, "stopDiagnostic").getOrThrow()
+            assertTrue(service.snapshot.recording)
+            hr(service, 81); command(service, "finish").getOrThrow()
+            assertEquals(2, service.snapshot.hrCount)
+            assertEquals(1L, diagnostic(service)["savedEvents"])
+        } finally { command(service, "stopDiagnostic"); command(service, "finish"); unbind(binding) }
+    }
+    @Test fun incompleteCaptureStopReturnsErrorAndDoesNotStopRecording() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); isolateDiagnostics(service); foreground(service); visible(service, true)
+            command(service, "startDiagnostic").getOrThrow(); command(service, "start").getOrThrow()
+            val capture = field(service, "diagnosticCapture").get(service) as DiagnosticCapture
+            // Invalid admitted input terminates diagnostics; the recorder remains independent.
+            capture.offerInput(DiagnosticTestData.input(capture, 1)) // wrong process identity
+            assertEquals("DIAGNOSTIC_ERROR", (command(service, "stopDiagnostic").exceptionOrNull() as RecorderError).code)
+            assertTrue(service.snapshot.recording); assertNull(service.snapshot.errorCode)
+            command(service, "finish").getOrThrow()
+        } finally { command(service, "stopDiagnostic"); command(service, "finish"); unbind(binding) }
+    }
+    @Test fun failedDiagnosticFinalCommitReturnsErrorThroughBridgeAndKeepsSessionActive() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); foreground(service); visible(service, true)
+            writer(service) {
+                DiagnosticTestData.await((field(service, "diagnosticJournal").get(service) as DiagnosticJournal).closeAsync())
+                val context = DiagnosticTestData.context()
+                val policy = DiagnosticPolicy(minFreeBytes = 0)
+                val store = DiagnosticStore(context, policy)
+                val db = DiagnosticStore::class.java.getDeclaredField("db").apply { isAccessible = true }.get(store) as SQLiteDatabase
+                db.execSQL("CREATE TRIGGER d4_reject_final BEFORE UPDATE ON diagnostic_captures WHEN json_extract(NEW.checkpoint_json, '$.state')='complete' BEGIN SELECT RAISE(ABORT,'synthetic final failure'); END")
+                store.close()
+                val diagnostics = DiagnosticJournal(context, policy); DiagnosticTestData.await(diagnostics.ready)
+                field(service, "diagnosticJournal").set(service, diagnostics)
+            }
+            command(service, "startDiagnostic").getOrThrow(); command(service, "start").getOrThrow()
+            hr(service, 80)
+            val error = command(service, "stopDiagnostic").exceptionOrNull() as RecorderError
+            assertEquals("DIAGNOSTIC_ERROR", error.code)
+            assertEquals(false, diagnostic(service)["checkpointPersisted"])
+            assertEquals(true, diagnostic(service)["unknownTail"])
+            assertTrue(service.snapshot.recording); assertNull(service.snapshot.errorCode)
+            command(service, "finish").getOrThrow()
+        } finally { command(service, "stopDiagnostic"); command(service, "finish"); unbind(binding) }
+    }
+    @Test fun actionActivityGuardAllowsResumedHostAfterDialogButRejectsBackgroundOrUnknownFocus() {
+        lateinit var unfocused: android.app.Activity
+        instrumentation.runOnMainSync { unfocused = object : android.app.Activity() { override fun hasWindowFocus() = false } }
+        assertSame(unfocused, requireRecorderActionActivity(unfocused, true))
+        assertEquals("NO_ACTIVITY", assertThrows(RecorderError::class.java) { requireRecorderActionActivity(unfocused, false) }.code)
+        assertEquals("NO_ACTIVITY", assertThrows(RecorderError::class.java) { requireRecorderActionActivity(unfocused, null) }.code)
+        assertEquals("NO_ACTIVITY", assertThrows(RecorderError::class.java) { requireRecorderActionActivity(null, true) }.code)
+    }
 }

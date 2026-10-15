@@ -25,7 +25,7 @@ class RecorderModule : Module() {
             val connected = (binder as RecorderService.LocalBinder).service
             service = connected
             val visible = hostVisible ?: appContext.currentActivity?.hasWindowFocus()?.takeIf { it }
-            visible?.let { connected.activityVisible(it) }
+            visible?.let { hostVisible = it; connected.activityVisible(it) }
             if (observing) connected.addListener(listener)
             val requests = pending.toList(); pending.clear()
             requests.forEach { (_, action) -> action(connected) }
@@ -38,7 +38,7 @@ class RecorderModule : Module() {
         Name("VeymurRecorder")
         Events("onSnapshot")
         AsyncFunction("getModuleInfo") {
-            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 3, "recorderImplemented" to true)
+            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 4, "recorderImplemented" to true)
         }
         AsyncFunction("ensureActivity") { promise: Promise -> main.post {
             try { requireRecorderActivity(appContext.currentActivity, visible = true); promise.resolve(mapOf("available" to true)) }
@@ -51,6 +51,8 @@ class RecorderModule : Module() {
         AsyncFunction("cancelSearch") { promise: Promise -> command("cancelSearch", promise) }
         AsyncFunction("connect") { id: String, promise: Promise -> command("connect", promise, argument = id) }
         AsyncFunction("start") { route: Boolean, promise: Promise -> command("start", promise, route = route) }
+        AsyncFunction("startDiagnostic") { promise: Promise -> command("startDiagnostic", promise) }
+        AsyncFunction("stopDiagnostic") { promise: Promise -> command("stopDiagnostic", promise) }
         AsyncFunction("pause") { promise: Promise -> command("pause", promise) }
         AsyncFunction("resume") { promise: Promise -> command("resume", promise) }
         AsyncFunction("finish") { promise: Promise -> command("finish", promise) }
@@ -90,8 +92,8 @@ class RecorderModule : Module() {
     }
     private fun command(name: String, promise: Promise, argument: String? = null, route: Boolean = false) {
         withService(promise) { recorder ->
-            if (name == "start") {
-                try { requireRecorderActivity(appContext.currentActivity, visible = true) }
+            if (name == "start" || name == "startDiagnostic") {
+                try { requireRecorderActionActivity(appContext.currentActivity, hostVisible) }
                 catch (error: RecorderError) { reject(promise, error); return@withService }
             }
             recorder.execute(name, argument, route) { result ->

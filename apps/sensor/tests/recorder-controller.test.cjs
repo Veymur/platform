@@ -15,6 +15,7 @@ async function fixture() {
     subscribe: listener => { emit = listener; return () => { removed++; }; }, getSnapshot: async () => snapshot(),
     search: async () => { calls.push('search'); }, cancelSearch: async () => { calls.push('cancelSearch'); }, connect: async id => { calls.push(['connect', id]); },
     start: async options => { calls.push(['start', options.routeRequested]); }, pause: async () => { calls.push('pause'); }, resume: async () => { calls.push('resume'); },
+    startDiagnostic: async () => { calls.push('startDiagnostic'); }, stopDiagnostic: async () => { calls.push('stopDiagnostic'); },
     finish: async () => { calls.push('finish'); }, exportLatest: async () => { calls.push('export'); return { uri: 'content://test/exports/file.zip' }; },
     shareExport: async uri => { calls.push(['share', uri]); } };
   const exports = {};
@@ -69,4 +70,27 @@ test('native permission/Activity errors are visible and do not become successful
   const f = await fixture(); f.client.ensureActivity = async () => { throw new RecorderClientError('NO_ACTIVITY', 'Reopen app'); };
   await f.controller.setRoute(true); assert.match(f.view().error, /NO_ACTIVITY/); assert.equal(f.view().routeRequested, false);
   f.permissions.bluetoothGranted = async () => false; await f.controller.connect('ABC'); assert.match(f.view().error, /PERMISSION_DENIED/);
+});
+
+test('diagnostics require explicit permission, survive unmount, and stop waits for native commit', async () => {
+  const f = await fixture();
+  f.permissions.requestBluetooth = async () => false;
+  await f.controller.startDiagnostic(); assert.deepEqual(f.calls, ['Activity']); assert.match(f.view().message, /remain off/);
+  f.permissions.requestBluetooth = async () => true;
+  await f.controller.startDiagnostic(); assert.deepEqual(f.calls, ['Activity', 'Activity', 'startDiagnostic']);
+  f.off(); await f.remount(); assert.equal(f.calls.includes('stopDiagnostic'), false);
+  let complete;
+  f.client.stopDiagnostic = () => new Promise(resolve => { complete = resolve; });
+  const stopping = f.controller.stopDiagnostic(); await flush();
+  assert.equal(f.view().pending, 'Stop diagnostics'); assert.equal(f.view().message, null);
+  complete({ state: 'complete' }); await stopping; assert.match(f.view().message, /saved and closed/);
+  f.client.stopDiagnostic = async () => { throw new RecorderClientError('DIAGNOSTIC_ERROR', 'incomplete'); };
+  await f.controller.stopDiagnostic(); assert.match(f.view().error, /DIAGNOSTIC_ERROR/); assert.equal(f.view().message, null);
+  assert.equal(f.calls.includes('finish'), false); assert.equal(f.calls.includes('search'), false);
+});
+test('unmount during diagnostic permission request cannot start capture', async () => {
+  const f = await fixture(); let grant;
+  f.permissions.requestBluetooth = () => new Promise(resolve => { grant = resolve; });
+  const starting = f.controller.startDiagnostic(); await flush(); f.off(); grant(true); await starting;
+  assert.equal(f.calls.includes('startDiagnostic'), false);
 });

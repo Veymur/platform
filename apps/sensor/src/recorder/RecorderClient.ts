@@ -2,7 +2,7 @@ import { nativeRecorder, getModuleInfo } from '../../modules/veymur-recorder';
 import type { NativeRecorderModule, RecorderSnapshot, RecorderErrorCode } from '../../modules/veymur-recorder';
 export type * from '../../modules/veymur-recorder';
 
-const codes = new Set(['UNSUPPORTED_PLATFORM', 'INCOMPATIBLE_BINARY', 'SERVICE_UNAVAILABLE', 'NOT_READY', 'NO_ACTIVITY', 'PERMISSION_DENIED', 'INVALID_STATE', 'INVALID_ARGUMENT', 'NOT_CONNECTED', 'CONNECTION_ERROR', 'DISCOVERY_ERROR', 'STORAGE_ERROR', 'NO_SESSIONS']);
+const codes = new Set(['UNSUPPORTED_PLATFORM', 'INCOMPATIBLE_BINARY', 'SERVICE_UNAVAILABLE', 'NOT_READY', 'NO_ACTIVITY', 'PERMISSION_DENIED', 'INVALID_STATE', 'INVALID_ARGUMENT', 'NOT_CONNECTED', 'CONNECTION_ERROR', 'DISCOVERY_ERROR', 'STORAGE_ERROR', 'NO_SESSIONS', 'DIAGNOSTIC_ERROR']);
 export class RecorderClientError extends Error {
   constructor(public readonly code: RecorderErrorCode, message: string, cause?: unknown) {
     super(message, { cause }); this.name = 'RecorderClientError';
@@ -23,6 +23,11 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
   const fail = () => { throw new RecorderClientError('INCOMPATIBLE_BINARY', 'Incompatible recorder snapshot; rebuild the native app.'); };
   if (value === null || typeof value !== 'object') return fail();
   const v = value as Record<string, unknown>;
+  const diagnostic = v.diagnostic as Record<string, unknown> | null;
+  if (!diagnostic || typeof diagnostic !== 'object' || !nullableString(diagnostic.captureId) ||
+      typeof diagnostic.state !== 'string' || !['off', 'starting', 'active', 'stopping', 'complete', 'incomplete', 'interrupted'].includes(diagnostic.state) ||
+      !['savedEvents', 'savedProcessing', 'knownLostEvents', 'knownLostProcessing'].every(key => nonnegative(diagnostic[key])) ||
+      typeof diagnostic.unknownTail !== 'boolean' || typeof diagnostic.checkpointPersisted !== 'boolean' || !nullableString(diagnostic.lastErrorCode)) return fail();
   if (!nonnegative(v.revision) || typeof v.ready !== 'boolean' || typeof v.status !== 'string' ||
       !nullableString(v.sessionId) || (typeof v.sessionState !== 'string' || !['preparation', 'recording', 'paused', 'finishing', 'completed', 'interrupted'].includes(v.sessionState)) ||
       !nullableString(v.connectedDeviceId) || !nullableNumber(v.batteryPercent) || (typeof v.batteryPercent === 'number' && v.batteryPercent > 100) ||
@@ -34,7 +39,7 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
       !(v.errorCode === null || (typeof v.errorCode === 'string' && codes.has(v.errorCode))) || !Array.isArray(v.devices) ||
       !v.devices.every(d => d !== null && typeof d === 'object' && typeof d.id === 'string' && typeof d.name === 'string' && typeof d.address === 'string')) return fail();
   // Copy only contract fields; never expose future native internals through this boundary.
-  return { revision: v.revision, ready: v.ready, status: v.status, sessionId: v.sessionId, sessionState: v.sessionState,
+  return { diagnostic: { captureId: diagnostic.captureId, state: diagnostic.state, savedEvents: diagnostic.savedEvents, savedProcessing: diagnostic.savedProcessing, knownLostEvents: diagnostic.knownLostEvents, knownLostProcessing: diagnostic.knownLostProcessing, unknownTail: diagnostic.unknownTail, checkpointPersisted: diagnostic.checkpointPersisted, lastErrorCode: diagnostic.lastErrorCode }, revision: v.revision, ready: v.ready, status: v.status, sessionId: v.sessionId, sessionState: v.sessionState,
     connectedDeviceId: v.connectedDeviceId, batteryPercent: v.batteryPercent, hr: v.hr, hrAgeMs: v.hrAgeMs, hrStatus: v.hrStatus,
     devices: v.devices.map(d => ({ id: d.id, name: d.name, address: d.address })), hrCount: v.hrCount, gpsCount: v.gpsCount,
     activeMs: v.activeMs, lastCommitUtcMs: v.lastCommitUtcMs, gpsStatus: v.gpsStatus, routeEnabled: v.routeEnabled,
@@ -71,6 +76,8 @@ export class RecorderClient {
   async cancelSearch() { return this.call(n => n.cancelSearch()); }
   async connect(id: string) { return this.call(n => n.connect(id)); }
   async start(options: { routeRequested: boolean }) { return this.call(n => n.start(options.routeRequested)); }
+  async startDiagnostic() { return this.call(n => n.startDiagnostic()); }
+  async stopDiagnostic() { return this.call(n => n.stopDiagnostic()); }
   async pause() { return this.call(n => n.pause()); }
   async resume() { return this.call(n => n.resume()); }
   async finish() { return this.call(n => n.finish()); }

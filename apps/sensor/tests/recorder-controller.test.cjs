@@ -7,12 +7,12 @@ const ts = require('typescript');
 const { setImmediate } = require('node:timers');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 class RecorderClientError extends Error { constructor(code, message) { super(message); this.code = code; } }
-const snapshot = (revision = 1, patch = {}) => ({ revision, ready: true, sessionId: null, sessionState: 'preparation', routeEnabled: false, ...patch });
+const snapshot = (revision = 1, patch = {}) => ({ revision, ready: true, sessionId: null, sessionState: 'preparation', routeEnabled: false, diagnostic: { captureId: null, state: 'off' }, ...patch });
 async function fixture() {
   const calls = []; let emit; let view; let removed = 0;
-  const permissions = { bluetoothGranted: async () => true, requestBluetooth: async () => true, requestRoute: async () => true, notifications: async () => {}, confirmFinish: async () => true };
+  const permissions = { bluetoothGranted: async () => true, requestBluetooth: async () => true, requestRoute: async () => true, notifications: async () => {}, confirmDeleteDiagnostic: async () => true, confirmFinish: async () => true };
   const client = { getModuleInfo: async () => ({}), ensureActivity: async () => { calls.push('Activity'); },
-    subscribe: listener => { emit = listener; return () => { removed++; }; }, getSnapshot: async () => snapshot(),
+    subscribe: listener => { emit = listener; return () => { removed++; }; }, getSnapshot: async () => snapshot(), listDiagnosticCaptures: async () => [],
     search: async () => { calls.push('search'); }, cancelSearch: async () => { calls.push('cancelSearch'); }, connect: async id => { calls.push(['connect', id]); },
     start: async options => { calls.push(['start', options.routeRequested]); }, pause: async () => { calls.push('pause'); }, resume: async () => { calls.push('resume'); },
     startDiagnostic: async () => { calls.push('startDiagnostic'); }, stopDiagnostic: async () => { calls.push('stopDiagnostic'); },
@@ -93,4 +93,27 @@ test('unmount during diagnostic permission request cannot start capture', async 
   f.permissions.requestBluetooth = () => new Promise(resolve => { grant = resolve; });
   const starting = f.controller.startDiagnostic(); await flush(); f.off(); grant(true); await starting;
   assert.equal(f.calls.includes('startDiagnostic'), false);
+});
+test('capture export uses explicit selection, waits for ZIP and never stops capture implicitly', async () => {
+  const f = await fixture(); let ready;
+  f.client.exportDiagnostic = id => { f.calls.push(['exportDiagnostic', id]); return new Promise(resolve => { ready = resolve; }); };
+  f.controller.selectCapture('chosen');
+  const exporting = f.controller.exportDiagnostic(); await flush();
+  assert.equal(f.view().pending, 'Export diagnostics'); assert.equal(f.calls.some(c => Array.isArray(c) && c[0] === 'share'), false);
+  ready({ uri: 'content://capture' }); await exporting;
+  assert.deepEqual(f.calls.at(-2), ['exportDiagnostic', 'chosen']); assert.deepEqual(f.calls.at(-1), ['share', 'content://capture']);
+  assert.match(f.view().message, /unencrypted/); assert.equal(f.calls.includes('stopDiagnostic'), false);
+});
+test('capture deletion confirms identity, refreshes list, preserves errors and cancels after unmount', async () => {
+  const f = await fixture(); f.controller.selectCapture('chosen');
+  f.permissions.confirmDeleteDiagnostic = async id => { assert.equal(id, 'chosen'); return false; };
+  f.client.deleteDiagnostic = async id => { f.calls.push(['deleteDiagnostic', id]); };
+  await f.controller.deleteDiagnostic(); assert.equal(f.calls.some(c => Array.isArray(c)), false);
+  f.permissions.confirmDeleteDiagnostic = async () => true;
+  await f.controller.deleteDiagnostic(); assert.deepEqual(f.calls.at(-1), ['deleteDiagnostic', 'chosen']); assert.equal(f.view().selectedCaptureId, null);
+  assert.match(f.view().message, /other apps remain/);
+  f.controller.selectCapture('chosen');
+  let confirm; f.permissions.confirmDeleteDiagnostic = () => new Promise(resolve => { confirm = resolve; });
+  const deleting = f.controller.deleteDiagnostic(); await flush(); const count = f.calls.length;
+  f.off(); confirm(true); await deleting; assert.equal(f.calls.length, count);
 });

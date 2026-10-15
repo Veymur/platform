@@ -36,6 +36,8 @@ class RecorderService : Service() {
     private lateinit var worker: Handler
     private var journal: Journal? = null
     private var diagnosticJournal: DiagnosticJournal? = null
+    private lateinit var diagnosticExports: DiagnosticExports
+    private var nextExportCleanup = 0L
     @Volatile private var diagnosticCapture: DiagnosticCapture? = null
     @Volatile private var diagnosticStatus: DiagnosticCaptureStatus? = null
     @Volatile private var diagnosticPending = false
@@ -101,15 +103,17 @@ class RecorderService : Service() {
             snapshot = snapshot.copy(ready = true, recovered = journal!!.recoverInterrupted(), status = "Turn on your sensor and search for it")
         }
         // Opening/recovery is independent of recorder storage and never enables capture.
-        diagnosticJournal = DiagnosticJournal(this).also { diagnostics ->
-            diagnostics.ready.thenCompose { diagnostics.listCaptures() }.whenComplete { captures, error ->
-                worker.post {
-                    if (error != null) diagnosticError = "open_failed"
-                    else if (diagnosticCapture == null && !diagnosticPending) diagnosticStatus = captures.lastOrNull()
-                    publish()
-                }
+        val diagnostics = DiagnosticJournal(this)
+        diagnosticJournal = diagnostics
+        diagnostics.ready.thenCompose { diagnostics.listCaptures() }.whenComplete { captures, error ->
+            worker.post {
+                if (diagnosticJournal !== diagnostics) return@post
+                if (error != null) diagnosticError = "open_failed"
+                else if (diagnosticCapture == null && !diagnosticPending) diagnosticStatus = captures.lastOrNull()
+                publish()
             }
         }
+        diagnosticExports = DiagnosticExports(this, diagnosticJournal!!)
         worker.post(tick)
     }
     private fun initializePolar() {
@@ -188,6 +192,10 @@ class RecorderService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             if (shuttingDown) return
+            if (SystemClock.elapsedRealtime() >= nextExportCleanup) {
+                nextExportCleanup = SystemClock.elapsedRealtime() + 60000
+                diagnosticExports.cleanup().whenComplete { _, error -> if (error != null) worker.post { diagnosticFailure(error); publish() } }
+            }
             diagnosticCapture?.let { capture ->
                 diagnosticStatus = capture.status
                 if (capture.status.state !in setOf("active", "stopping")) {
@@ -309,7 +317,7 @@ class RecorderService : Service() {
         main.post {
             try {
                 if (shuttingDown) throw RecorderError("SERVICE_UNAVAILABLE", "Recorder service stopped")
-                if (!snapshot.ready && name !in setOf("getSnapshot", "startDiagnostic", "stopDiagnostic")) throw RecorderError("NOT_READY", "Recorder storage is not ready; retry")
+                if (!snapshot.ready && name !in setOf("getSnapshot", "startDiagnostic", "stopDiagnostic", "listDiagnosticCaptures", "exportDiagnostic", "deleteDiagnostic")) throw RecorderError("NOT_READY", "Recorder storage is not ready; retry")
                 if (name in setOf("search", "connect", "start", "startDiagnostic")) {
                     if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
                         checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED)
@@ -325,6 +333,20 @@ class RecorderService : Service() {
                     "start" -> start(route, done)
                     "startDiagnostic" -> startDiagnostic(done)
                     "stopDiagnostic" -> stopDiagnostic(done)
+                    "listDiagnosticCaptures" -> diagnosticCommand(diagnosticJournal!!.listCaptures().thenApply { captures ->
+                        mapOf("captures" to captures.map { diagnosticDto(it, null, false) })
+                    }, done)
+                    "exportDiagnostic" -> diagnosticCommand(diagnosticExports.export(argument ?: "").thenApply { file -> mapOf("path" to file.absolutePath) }, done)
+                    "deleteDiagnostic" -> {
+                        val id = argument ?: throw RecorderError("INVALID_ARGUMENT", "Capture ID required")
+                        worker.post {
+                            val live = diagnosticCapture
+                            if (live?.captureId == id && live.status.state in setOf("complete", "interrupted", "incomplete")) {
+                                diagnosticStatus = live.status; diagnosticCapture = null; polarInputs.setSink(null)
+                            }
+                            diagnosticCommand(diagnosticExports.delete(id).thenApply { deleted -> mapOf("deleted" to deleted) }, done, id)
+                        }
+                    }
                     else -> workerCommand(done) {
                         when (name) {
                             "getSnapshot" -> dto()
@@ -379,14 +401,38 @@ class RecorderService : Service() {
             "routeEnabled" to routeEnabled, "recoveredCount" to snapshot.recovered, "errorCode" to snapshot.errorCode, "diagnostic" to diagnosticDto())
     }
     private fun phoneBattery(): Int = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-    private fun diagnosticDto(): Map<String, Any?> {
-        val status = diagnosticCapture?.status ?: diagnosticStatus
+    private fun diagnosticDto(
+        status: DiagnosticCaptureStatus? = diagnosticCapture?.status ?: diagnosticStatus,
+        error: String? = diagnosticError,
+        pending: Boolean = diagnosticPending,
+    ): Map<String, Any?> {
         return mapOf("captureId" to status?.captureId,
-            "state" to (if (diagnosticPending) "starting" else status?.state ?: "off"),
+            "state" to (if (pending) "starting" else status?.state ?: "off"),
             "savedEvents" to (status?.savedEvents ?: 0L), "savedProcessing" to (status?.savedProcessing ?: 0L),
             "knownLostEvents" to (status?.knownLostEvents ?: 0L), "knownLostProcessing" to (status?.knownLostProcessing ?: 0L),
             "unknownTail" to (status?.unknownTail ?: false), "checkpointPersisted" to (status?.checkpointPersisted ?: true),
-            "lastErrorCode" to (diagnosticError ?: status?.lastErrorCode))
+            "lastErrorCode" to (error ?: status?.lastErrorCode))
+    }
+    private fun diagnosticCommand(
+        future: java.util.concurrent.CompletableFuture<Map<String, Any?>>,
+        done: (Result<Map<String, Any?>>) -> Unit,
+        deletedId: String? = null,
+    ) {
+        future.whenComplete { value, error -> worker.post {
+            val result = if (error == null) {
+                if (deletedId != null && diagnosticStatus?.captureId == deletedId) {
+                    diagnosticStatus = null; diagnosticError = null
+                }
+                Result.success(value)
+            } else {
+                var cause: Throwable = error
+                while (cause is java.util.concurrent.CompletionException && cause.cause != null) cause = cause.cause!!
+                Result.failure(if ((cause as? DiagnosticStorageError)?.code in setOf("capture_active", "export_active"))
+                    RecorderError("INVALID_STATE", "Stop this diagnostic capture before exporting or deleting it")
+                    else diagnosticFailure(error))
+            }
+            publish(); main.post { done(result) }
+        } }
     }
     private fun diagnosticFailure(error: Throwable): RecorderError {
         var cause = error
@@ -411,7 +457,9 @@ class RecorderService : Service() {
                 .put("hr_stale_after_ms", 5000).put("active_ms", clock.activeMs()).put("last_hr", snapshot.hr ?: JSONObject.NULL)
                 .put("last_hr_received_elapsed_ns", if (snapshot.lastHrElapsedNs > 0) snapshot.lastHrElapsedNs.toString() else JSONObject.NULL)
             val environment = JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
-                .put("android_api", Build.VERSION.SDK_INT).put("device_info", JSONObject(deviceDetails.toMap()))
+                .put("android_api", Build.VERSION.SDK_INT).put("android_release", Build.VERSION.RELEASE)
+                .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName ?: "unknown")
+                .put("core_version", "stage0-777a33b-polar-export-d5").put("device_info", JSONObject(deviceDetails.toMap()))
             diagnosticJournal!!.startCapture(PolarInputBoundary.processRunId, configuration.toString(), environment.toString()).whenComplete { capture, error ->
                 worker.post {
                     diagnosticPending = false
@@ -492,8 +540,10 @@ class RecorderService : Service() {
         polarInputs.setSink(null)
         worker.post {
             try { journal?.close() } finally {
-                diagnosticJournal?.closeAsync()?.whenComplete { _, _ -> workerThread.quitSafely() }
-                    ?: workerThread.quitSafely()
+                diagnosticExports.closeAsync().whenComplete { _, _ ->
+                    diagnosticJournal?.closeAsync()?.whenComplete { _, _ -> workerThread.quitSafely() }
+                        ?: workerThread.quitSafely()
+                }
             }
         }
         super.onDestroy()

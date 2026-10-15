@@ -1,5 +1,5 @@
 export type RecorderModuleInfo = {
-  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 4; recorderImplemented: true;
+  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 5; recorderImplemented: true;
 };
 export type RecorderErrorCode = 'UNSUPPORTED_PLATFORM' | 'INCOMPATIBLE_BINARY' | 'SERVICE_UNAVAILABLE' |
   'NOT_READY' | 'NO_ACTIVITY' | 'PERMISSION_DENIED' | 'INVALID_STATE' | 'INVALID_ARGUMENT' |
@@ -33,6 +33,9 @@ export interface NativeRecorderModule {
   start(routeRequested: boolean): Promise<{ sessionId: string }>;
   startDiagnostic(): Promise<DiagnosticStatus>;
   stopDiagnostic(): Promise<DiagnosticStatus>;
+  listDiagnosticCaptures(): Promise<{ captures: DiagnosticStatus[] }>;
+  exportDiagnostic(id: string): Promise<ExportResult>;
+  deleteDiagnostic(id: string): Promise<{ deleted: boolean }>;
   pause(): Promise<SessionResult>;
   resume(): Promise<SessionResult>;
   finish(): Promise<SessionResult>;

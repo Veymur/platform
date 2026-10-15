@@ -20,6 +20,7 @@ class DiagnosticJournal(
     @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN") // Timed wait/notify for the single writer.
     private val gate = Object()
     private val controls = ArrayDeque<() -> Unit>()
+    private val exporting = mutableSetOf<String>()
     private val handles = mutableMapOf<String, Capture>()
     private var active: Capture? = null
     private var closing = false
@@ -153,10 +154,27 @@ class DiagnosticJournal(
     fun readInput(captureId: String, sequence: Long): CompletableFuture<String?> = submit { it.readInput(captureId, sequence) }
     fun deleteCapture(captureId: String): CompletableFuture<Boolean> = submit { store ->
         synchronized(gate) { if (active?.handle?.captureId == captureId) throw DiagnosticStorageError("capture_active") }
-        val deleted = store.delete(captureId)
+        if (captureId in exporting) throw DiagnosticStorageError("export_active")
+        val terminal = synchronized(gate) { handles[captureId]?.status?.state in setOf("complete", "incomplete", "interrupted") }
+        val deleted = store.delete(captureId, terminal)
         synchronized(gate) { handles.remove(captureId) }
         deleted
     }
+    fun beginExport(id: String): CompletableFuture<DiagnosticExportMetadata> = submit { store ->
+        val status = synchronized(gate) { handles[id]?.let { liveStatus(it.handle) } } ?: store.get(id)
+            ?: throw DiagnosticStorageError("capture_not_found")
+        if (status.state !in setOf("complete", "incomplete", "interrupted")) throw DiagnosticStorageError("capture_active")
+        if (!exporting.add(id)) throw DiagnosticStorageError("export_active")
+        try {
+            val metadata = store.metadata(id)
+            DiagnosticExportMetadata(status, metadata.first, metadata.second)
+        } catch (error: Exception) { exporting.remove(id); throw error }
+    }
+    fun exportPage(id: String, processing: Boolean, after: Long): CompletableFuture<List<DiagnosticRow>> = submit { store ->
+        if (id !in exporting) throw DiagnosticStorageError("export_not_leased")
+        store.exportPage(id, processing, after)
+    }
+    fun endExport(id: String): CompletableFuture<Unit> = submit { exporting.remove(id); Unit }
     fun closeAsync(): CompletableFuture<Unit> = synchronized(gate) {
         closing = true; active?.let(::stopInputs); gate.notifyAll(); closeResult
     }

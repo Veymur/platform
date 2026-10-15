@@ -1,5 +1,5 @@
 import { recorderClient, RecorderClientError } from './RecorderClient';
-import type { RecorderSnapshot } from './types';
+import type { RecorderSnapshot, DiagnosticStatus } from './types';
 
 export interface RecorderPermissions {
   bluetoothGranted(): Promise<boolean>;
@@ -7,18 +7,21 @@ export interface RecorderPermissions {
   requestRoute(): Promise<boolean>;
   notifications(): Promise<void>;
   confirmFinish(): Promise<boolean>;
+  confirmDeleteDiagnostic(id: string): Promise<boolean>;
 }
 export type RecorderView = {
+  captures: DiagnosticStatus[]; selectedCaptureId: string | null;
   snapshot: RecorderSnapshot | null; pending: string | null; routeRequested: boolean;
   message: string | null; error: string | null;
 };
-export const initialRecorderView: RecorderView = { snapshot: null, pending: null, routeRequested: false, message: null, error: null };
+export const initialRecorderView: RecorderView = { captures: [], selectedCaptureId: null, snapshot: null, pending: null, routeRequested: false, message: null, error: null };
 const errorText = (error: unknown) => error instanceof RecorderClientError ? `${error.code}: ${error.message}` : String(error);
 
 /** No recording timer or lifecycle commands: this controller only renders native facts and user intent. */
 export class RecorderController {
-  private view = { ...initialRecorderView };
+  private view: RecorderView = { ...initialRecorderView };
   private generation = 0;
+  private capturesRequest = 0;
   private attached = false;
   private unsubscribe?: () => void;
   constructor(private readonly permissions: RecorderPermissions, private readonly client = recorderClient) {}
@@ -44,9 +47,45 @@ export class RecorderController {
   private observe() {
     if (this.unsubscribe) return;
     this.unsubscribe = this.client.subscribe(snapshot => {
-      this.update({ snapshot, ...(snapshot.sessionId ? { routeRequested: snapshot.routeEnabled } : {}) });
+      const captures = this.view.captures.filter(capture => capture.captureId !== snapshot.diagnostic.captureId);
+      if (snapshot.diagnostic.captureId) captures.push(snapshot.diagnostic);
+      this.update({ snapshot, captures, selectedCaptureId: this.view.selectedCaptureId ?? snapshot.diagnostic.captureId, ...(snapshot.sessionId ? { routeRequested: snapshot.routeEnabled } : {}) });
     }, error => this.update({ error: errorText(error) }));
+    const generation = this.generation;
+    void this.refreshCaptures().catch(error => { if (this.attached && generation === this.generation) this.update({ error: errorText(error) }); });
   }
+  private async refreshCaptures() {
+    const generation = this.generation;
+    const request = ++this.capturesRequest;
+    const captures = await this.client.listDiagnosticCaptures();
+    if (!this.attached || generation !== this.generation || request !== this.capturesRequest) return;
+    const latest = this.view.snapshot?.diagnostic;
+    if (latest?.captureId) {
+      const index = captures.findIndex(c => c.captureId === latest.captureId);
+      if (index < 0) captures.push(latest); else captures[index] = latest;
+    }
+    const selected = captures.some(c => c.captureId === this.view.selectedCaptureId) ? this.view.selectedCaptureId : captures.at(-1)?.captureId ?? null;
+    this.update({ captures, selectedCaptureId: selected });
+  }
+  selectCapture = (id: string) => { if (!this.view.pending) this.update({ selectedCaptureId: id }); };
+  exportDiagnostic = () => this.run('Export diagnostics', async current => {
+    const id = this.view.selectedCaptureId;
+    if (!id) throw new RecorderClientError('INVALID_ARGUMENT', 'Select a diagnostic capture first.');
+    const file = await this.client.exportDiagnostic(id);
+    if (!current()) return;
+    await this.client.shareExport(file.uri);
+    if (current()) this.update({ message: 'Share dialog opened for the unencrypted capture ZIP. Temporary copies are removed after 24 hours while the app runs.' });
+  });
+  deleteDiagnostic = () => this.run('Delete diagnostics', async current => {
+    const id = this.view.selectedCaptureId;
+    if (!id) throw new RecorderClientError('INVALID_ARGUMENT', 'Select a diagnostic capture first.');
+    await this.client.ensureActivity();
+    if (!await this.permissions.confirmDeleteDiagnostic(id) || !current()) return;
+    await this.client.deleteDiagnostic(id);
+    if (!current()) return;
+    await this.refreshCaptures();
+    if (current()) this.update({ message: 'Capture and its temporary export copies deleted from this phone. Copies saved in other apps remain there.' });
+  });
   private async run(name: string, action: (current: () => boolean) => Promise<void>) {
     if (this.view.pending || !this.attached) return;
     const generation = this.generation;
@@ -96,7 +135,7 @@ export class RecorderController {
   });
   stopDiagnostic = () => this.run('Stop diagnostics', async current => {
     await this.client.stopDiagnostic();
-    if (current()) this.update({ message: 'Diagnostic capture saved and closed.' });
+    if (current()) { await this.refreshCaptures(); this.update({ message: 'Diagnostic capture saved and closed.' }); }
   });
   pause = () => this.run('Pause', async () => { await this.client.pause(); });
   resume = () => this.run('Resume', async () => { await this.client.resume(); });
@@ -116,6 +155,7 @@ export class RecorderController {
     await this.client.getModuleInfo();
     if (!current()) return;
     this.observe();
+    await this.refreshCaptures();
     const snapshot = await this.client.getSnapshot();
     if (current() && (!this.view.snapshot || snapshot.revision > this.view.snapshot.revision)) this.update({ snapshot });
   });

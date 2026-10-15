@@ -264,6 +264,48 @@
         },
         "unknown_tail": {
           "type": "boolean"
+        },
+        "received_processing": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "saved_processing": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "known_lost_processing": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unprocessed_inputs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "checkpoint_persisted": {
+          "type": "boolean"
+        },
+        "last_error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_error_class": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

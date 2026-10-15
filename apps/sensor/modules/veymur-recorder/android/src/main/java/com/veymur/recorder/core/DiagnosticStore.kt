@@ -85,9 +85,9 @@ class DiagnosticStore(context: Context, policy: DiagnosticPolicy) : AutoCloseabl
         }
         return unfinished.size
     }
-    fun delete(id: String): Boolean = transaction {
+    fun delete(id: String, allowUnfinished: Boolean = false): Boolean = transaction {
         val status = get(id) ?: return@transaction false
-        check(status.state !in setOf("active", "stopping")) { "Active capture cannot be deleted" }
+        check(allowUnfinished || status.state !in setOf("active", "stopping")) { "Active capture cannot be deleted" }
         db.execSQL("DELETE FROM diagnostic_captures WHERE id=?", arrayOf(id))
         true
     }
@@ -95,6 +95,25 @@ class DiagnosticStore(context: Context, policy: DiagnosticPolicy) : AutoCloseabl
         owner()
         return db.rawQuery("SELECT json FROM diagnostic_events WHERE capture_id=? AND sequence=?", arrayOf(id, sequence.toString())).use {
             if (it.moveToFirst()) it.getString(0) else null
+        }
+    }
+    fun metadata(id: String): Pair<String, String> {
+        owner()
+        return db.rawQuery("SELECT configuration_json,environment_json FROM diagnostic_captures WHERE id=?", arrayOf(id)).use {
+            if (!it.moveToFirst()) throw DiagnosticStorageError("capture_not_found")
+            it.getString(0) to it.getString(1)
+        }
+    }
+    /** Keyset pages bound memory and release the cursor before ZIP I/O. Only terminal captures are leased. */
+    fun exportPage(id: String, processing: Boolean, after: Long): List<DiagnosticRow> {
+        owner()
+        val table = if (processing) "diagnostic_processing" else "diagnostic_events"
+        val parent = if (processing) "input_sequence" else "NULL"
+        return db.rawQuery("SELECT sequence,$parent,json FROM $table WHERE capture_id=? AND sequence>? ORDER BY sequence LIMIT 16",
+            arrayOf(id, after.toString())).use {
+            val rows = mutableListOf<DiagnosticRow>()
+            while (it.moveToNext()) rows.add(DiagnosticRow(it.getLong(0), if (it.isNull(1)) null else it.getLong(1), it.getString(2)))
+            rows
         }
     }
     override fun close() { owner(); db.close() }

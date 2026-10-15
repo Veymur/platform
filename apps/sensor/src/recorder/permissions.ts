@@ -30,5 +30,6 @@ export const recorderPermissions: RecorderPermissions = {
       await PermissionsAndroid.request(P.POST_NOTIFICATIONS);
     }
   },
+  confirmDeleteDiagnostic: id => confirm('Delete diagnostic capture?', `Delete ${id} and its temporary ZIP copies from this phone? Files already saved or shared elsewhere remain there.`, 'Delete capture', 'Keep capture'),
   confirmFinish: () => confirm('Finish recording?', 'Save the available data on this phone?', 'Save recording', 'Continue recording'),
 };

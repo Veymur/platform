@@ -29,9 +29,9 @@ class RecorderServiceBridgeTest {
         val task = FutureTask<Unit> { action() }
         (field(service, "worker").get(service) as Handler).post(task); task.get(10, TimeUnit.SECONDS)
     }
-    private fun command(service: RecorderService, name: String, route: Boolean = false): Result<Map<String, Any?>> {
+    private fun command(service: RecorderService, name: String, route: Boolean = false, argument: String? = null): Result<Map<String, Any?>> {
         val latch = CountDownLatch(1); var result: Result<Map<String, Any?>>? = null
-        service.execute(name, route = route) { result = it; latch.countDown() }
+        service.execute(name, argument = argument, route = route) { result = it; latch.countDown() }
         assertTrue("Command $name completed", latch.await(10, TimeUnit.SECONDS)); return result!!
     }
     private class Binding(val service: RecorderService, val connection: ServiceConnection)
@@ -257,10 +257,15 @@ class RecorderServiceBridgeTest {
 
     private fun isolateDiagnostics(service: RecorderService) {
         writer(service) {
+            DiagnosticTestData.await((field(service, "diagnosticExports").get(service) as DiagnosticExports).closeAsync())
             DiagnosticTestData.await((field(service, "diagnosticJournal").get(service) as DiagnosticJournal).closeAsync())
-            val journal = DiagnosticJournal(DiagnosticTestData.context(), DiagnosticPolicy(minFreeBytes = 0))
+            val ctx = DiagnosticTestData.context()
+            val journal = DiagnosticJournal(ctx, DiagnosticPolicy(minFreeBytes = 0))
             DiagnosticTestData.await(journal.ready)
             field(service, "diagnosticJournal").set(service, journal)
+            field(service, "diagnosticExports").set(service, DiagnosticExports(ctx, journal))
+            field(service, "diagnosticStatus").set(service, null)
+            field(service, "diagnosticError").set(service, null)
         }
     }
     private fun visible(service: RecorderService, value: Boolean) = instrumentation.runOnMainSync { service.activityVisible(value) }
@@ -329,6 +334,7 @@ class RecorderServiceBridgeTest {
         try {
             isolated(service); foreground(service); visible(service, true)
             writer(service) {
+                DiagnosticTestData.await((field(service, "diagnosticExports").get(service) as DiagnosticExports).closeAsync())
                 DiagnosticTestData.await((field(service, "diagnosticJournal").get(service) as DiagnosticJournal).closeAsync())
                 val context = DiagnosticTestData.context()
                 val policy = DiagnosticPolicy(minFreeBytes = 0)
@@ -338,6 +344,7 @@ class RecorderServiceBridgeTest {
                 store.close()
                 val diagnostics = DiagnosticJournal(context, policy); DiagnosticTestData.await(diagnostics.ready)
                 field(service, "diagnosticJournal").set(service, diagnostics)
+                field(service, "diagnosticExports").set(service, DiagnosticExports(context, diagnostics))
             }
             command(service, "startDiagnostic").getOrThrow(); command(service, "start").getOrThrow()
             hr(service, 80)
@@ -356,5 +363,33 @@ class RecorderServiceBridgeTest {
         assertEquals("NO_ACTIVITY", assertThrows(RecorderError::class.java) { requireRecorderActionActivity(unfocused, false) }.code)
         assertEquals("NO_ACTIVITY", assertThrows(RecorderError::class.java) { requireRecorderActionActivity(unfocused, null) }.code)
         assertEquals("NO_ACTIVITY", assertThrows(RecorderError::class.java) { requireRecorderActionActivity(null, true) }.code)
+    }
+    @Test fun captureExportAndDeletionBridgeAcknowledgeFilesAndNeverFinishRecording() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); isolateDiagnostics(service); foreground(service); visible(service, true)
+            val id = command(service, "startDiagnostic").getOrThrow()["captureId"] as String
+            assertEquals("INVALID_STATE", (command(service, "exportDiagnostic", argument = id).exceptionOrNull() as RecorderError).code)
+            assertEquals("INVALID_STATE", (command(service, "deleteDiagnostic", argument = id).exceptionOrNull() as RecorderError).code)
+            hr(service, 83); command(service, "stopDiagnostic").getOrThrow()
+            val list = command(service, "listDiagnosticCaptures").getOrThrow()["captures"] as List<*>
+            assertEquals(1, list.size)
+            command(service, "start").getOrThrow()
+            val path = command(service, "exportDiagnostic", argument = id).getOrThrow()["path"] as String
+            val file = File(path); assertTrue(file.isFile)
+            val uri = androidx.core.content.FileProvider.getUriForFile(host, "${host.packageName}.exports", file)
+            host.contentResolver.openInputStream(uri)!!.use { assertEquals('P'.code, it.read()); assertEquals('K'.code, it.read()) }
+            java.util.zip.ZipFile(file).use { zip ->
+                val manifest = org.json.JSONObject(zip.getInputStream(zip.getEntry("manifest.json")).bufferedReader().readText())
+                assertEquals("stage0-777a33b-polar-export-d5", manifest.getString("core_version"))
+                assertEquals(android.os.Build.VERSION.RELEASE, manifest.getJSONObject("phone").getString("android_release"))
+            }
+            assertTrue(service.snapshot.recording)
+            assertEquals(true, command(service, "deleteDiagnostic", argument = id).getOrThrow()["deleted"])
+            assertFalse(file.exists()); assertTrue(service.snapshot.recording)
+            assertEquals(false, command(service, "deleteDiagnostic", argument = id).getOrThrow()["deleted"])
+            assertTrue((command(service, "listDiagnosticCaptures").getOrThrow()["captures"] as List<*>).isEmpty())
+            command(service, "finish").getOrThrow()
+        } finally { command(service, "stopDiagnostic"); command(service, "finish"); unbind(binding) }
     }
 }

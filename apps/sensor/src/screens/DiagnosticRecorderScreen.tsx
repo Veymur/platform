@@ -5,13 +5,15 @@ import { RecorderStatus } from '../components/RecorderStatus';
 import { useRecorder } from '../recorder/useRecorder';
 
 function AndroidRecorder() {
-  const { snapshot, pending, routeRequested, message, error, controller } = useRecorder();
+  const { captures, selectedCaptureId, snapshot, pending, routeRequested, message, error, controller } = useRecorder();
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const busy = pending !== null;
   const ready = snapshot?.ready === true;
   const active = snapshot?.sessionId != null;
   const recording = snapshot?.sessionState === 'recording';
   const paused = snapshot?.sessionState === 'paused';
+  const selectedCapture = captures.find(capture => capture.captureId === selectedCaptureId);
+  const captureClosed = selectedCapture && ['complete', 'incomplete', 'interrupted'].includes(selectedCapture.state);
   const finishing = snapshot?.sessionState === 'finishing';
   return <View style={styles.root}><StatusBar barStyle="dark-content" /><ScrollView contentContainerStyle={styles.body}>
     <Text accessibilityRole="header" style={styles.title}>Veymur · recording validation</Text>
@@ -39,6 +41,12 @@ function AndroidRecorder() {
         {snapshot?.diagnostic.lastErrorCode ? `\nDiagnostic error: ${snapshot.diagnostic.lastErrorCode}` : ''}</Text>
       <Button title="Start diagnostic capture" disabled={!snapshot || busy || ['starting', 'active', 'stopping'].includes(snapshot?.diagnostic.state ?? 'off')} onPress={() => { void controller.startDiagnostic(); }} />
       <Button title="Stop and save diagnostic capture" disabled={busy || snapshot?.diagnostic.state !== 'active'} onPress={() => { void controller.stopDiagnostic(); }} />
+      <Text>Saved captures</Text>
+      {captures.length === 0 && <Text>No diagnostic captures yet.</Text>}
+      {captures.map(capture => <Button key={capture.captureId} title={`${capture.captureId === selectedCaptureId ? 'Selected' : 'Select'} ${capture.captureId} · ${capture.state}`} disabled={busy} onPress={() => { if (capture.captureId) controller.selectCapture(capture.captureId); }} />)}
+      <Button title="Export selected capture" disabled={busy || !captureClosed} onPress={() => { void controller.exportDiagnostic(); }} />
+      <Button title="Delete selected capture" disabled={busy || !captureClosed} onPress={() => { void controller.deleteDiagnostic(); }} />
+      <Text>Stop an active capture before export. Its ZIP contains heart rate and device identifiers and is not encrypted. Choose where to save or share it. Temporary exports are removed after 24 hours when the app runs.</Text>
       <Text>Capture continues across pauses and after finishing a session until stopped here. Force stop ends capture; the committed portion is recovered on launch.</Text>
     </View>
     <Button title="Refresh recorder" disabled={busy} onPress={() => { void controller.retry(); }} />

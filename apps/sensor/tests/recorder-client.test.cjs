@@ -73,3 +73,15 @@ test('diagnostic status preserves loss and checkpoint errors and excludes raw na
     assert.throws(() => decodeSnapshot({ ...dto(), diagnostic: bad }), e => e.code === 'INCOMPATIBLE_BINARY');
   }
 });
+test('capture list is bounded and decoded; export/delete preserve IDs and diagnostic errors', async () => {
+  const { RecorderClient } = load(); const capture = { ...dto().diagnostic, captureId: 'selected', state: 'complete' }; let captures = [capture];
+  const native = { listDiagnosticCaptures: async () => ({ captures }),
+    exportDiagnostic: async id => { assert.equal(id, 'selected'); return { uri: 'content://capture' }; },
+    deleteDiagnostic: async () => { throw { code: 'DIAGNOSTIC_ERROR', message: 'cleanup failed' }; } };
+  const client = new RecorderClient(() => native);
+  assert.equal((await client.listDiagnosticCaptures())[0].captureId, 'selected');
+  assert.equal((await client.exportDiagnostic('selected')).uri, 'content://capture');
+  await assert.rejects(client.deleteDiagnostic('selected'), error => error.code === 'DIAGNOSTIC_ERROR');
+  captures = [{ ...capture, savedEvents: -1 }]; await assert.rejects(client.listDiagnosticCaptures(), error => error.code === 'INCOMPATIBLE_BINARY');
+  captures = Array(101).fill(capture); await assert.rejects(client.listDiagnosticCaptures(), error => error.code === 'INCOMPATIBLE_BINARY');
+});

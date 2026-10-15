@@ -1,0 +1,23 @@
+{
+  "expectations_version": 1,
+  "fixture": "native-hr-focus.fixture.json",
+  "basis": [
+    {"id": "selection", "reference": "D6 CLI selection --from-sequence 6 --to-sequence 6 from the D5 synthetic callback round trip", "reason": "HR is the focus, not a claim that the initial connection state can be guessed. All five preceding inputs must remain."},
+    {"id": "native-rules", "reference": "modules/veymur-recorder/android/src/main/java/com/veymur/recorder/core/RecorderService.kt::processPolarInput", "reason": "The preceding disconnects clear connection/HR. Raw HR zero does not become a current measurement."}
+  ],
+  "data_assertions": [
+    {"path": "events", "operation": "length", "value": 6, "basis": "selection"},
+    {"path": "provenance.prehistory_events", "operation": "equals", "value": 5, "basis": "selection"},
+    {"path": "provenance.requested_input_range", "operation": "equals", "value": {"first": 6, "last": 6}, "basis": "selection"},
+    {"path": "provenance.retained_input_range", "operation": "equals", "value": {"first": 1, "last": 6}, "basis": "selection"},
+    {"path": "provenance.omitted_after_events", "operation": "equals", "value": 15, "basis": "selection"},
+    {"path": "events.5.payload.hr", "operation": "equals", "value": 0, "basis": "native-rules"},
+    {"path": "completeness.all_source_inputs_retained", "operation": "equals", "value": false, "basis": "selection"}
+  ],
+  "replay_expectations": [
+    {"basis": "native-rules", "condition": "D7 replay starts from the declared preparation state and feeds retained prehistory in recorded processing order", "expected": "Connection is lost before the focused zero-HR input. That input does not fabricate a current HR or start a session."},
+    {"basis": "selection", "condition": "D7 considers the source suffix or late processing", "expected": "Omitted inputs/processing and possible interactions beyond the focus must remain explicit; this selection is not a complete capture."}
+  ],
+  "observed_processing_is_not_oracle": true,
+  "replay_assertions_executed": false
+}

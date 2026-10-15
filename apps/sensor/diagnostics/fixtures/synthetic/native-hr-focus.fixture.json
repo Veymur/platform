@@ -1,0 +1,338 @@
+{
+  "capture_bounds": {
+    "ended_elapsed_ns": "20000000000",
+    "ended_utc_ms": 1700000000000,
+    "started_elapsed_ns": "1000000000",
+    "started_utc_ms": 1700000000000
+  },
+  "completeness": {
+    "all_source_inputs_retained": false,
+    "all_source_processing_retained": false,
+    "retained_unprocessed_inputs": 0,
+    "source_complete": true
+  },
+  "events": [
+    {
+      "callback_variant": "blePowerStateChanged",
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "device_id": null,
+      "event_type": "bluetooth",
+      "payload": {
+        "powered": false
+      },
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "received_elapsed_ns": "1000000001",
+      "received_utc_ms": 1700000000000,
+      "schema_version": 1,
+      "sequence": 1,
+      "source": "polar_sdk"
+    },
+    {
+      "callback_variant": "deviceConnecting",
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "device_id": "fixture-id-0003",
+      "event_type": "connecting",
+      "payload": {
+        "info": {
+          "address": "02:00:00:00:00:01",
+          "deviceId": "fixture-id-0003",
+          "hasFileSystemService": false,
+          "hasHeartRateService": true,
+          "hasSAGRFCFileSystem": true,
+          "isConnectable": false,
+          "name": "Fixture device",
+          "rssi": -80
+        }
+      },
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "received_elapsed_ns": "1000000001",
+      "received_utc_ms": 1700000000000,
+      "schema_version": 1,
+      "sequence": 2,
+      "source": "polar_sdk"
+    },
+    {
+      "callback_variant": "deviceConnected",
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "device_id": "fixture-id-0003",
+      "event_type": "connected",
+      "payload": {
+        "info": {
+          "address": "02:00:00:00:00:01",
+          "deviceId": "fixture-id-0003",
+          "hasFileSystemService": false,
+          "hasHeartRateService": true,
+          "hasSAGRFCFileSystem": true,
+          "isConnectable": false,
+          "name": "Fixture device",
+          "rssi": -80
+        }
+      },
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "received_elapsed_ns": "1000000001",
+      "received_utc_ms": 1700000000000,
+      "schema_version": 1,
+      "sequence": 3,
+      "source": "polar_sdk"
+    },
+    {
+      "callback_variant": "deviceDisconnected.diagnostics",
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "device_id": "fixture-id-0003",
+      "event_type": "disconnected",
+      "payload": {
+        "diagnostics": {
+          "deviceCommand": null,
+          "gattStatus": null,
+          "reason": "UNKNOWN",
+          "recoveryAction": "NONE"
+        },
+        "info": {
+          "address": "02:00:00:00:00:01",
+          "deviceId": "fixture-id-0003",
+          "hasFileSystemService": false,
+          "hasHeartRateService": true,
+          "hasSAGRFCFileSystem": true,
+          "isConnectable": false,
+          "name": "Fixture device",
+          "rssi": -80
+        }
+      },
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "received_elapsed_ns": "1000000001",
+      "received_utc_ms": 1700000000000,
+      "schema_version": 1,
+      "sequence": 4,
+      "source": "polar_sdk"
+    },
+    {
+      "callback_variant": "deviceDisconnected.legacy",
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "device_id": "fixture-id-0003",
+      "event_type": "disconnected",
+      "payload": {
+        "info": {
+          "address": "02:00:00:00:00:01",
+          "deviceId": "fixture-id-0003",
+          "hasFileSystemService": false,
+          "hasHeartRateService": true,
+          "hasSAGRFCFileSystem": true,
+          "isConnectable": false,
+          "name": "Fixture device",
+          "rssi": -80
+        }
+      },
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "received_elapsed_ns": "1000000001",
+      "received_utc_ms": 1700000000000,
+      "schema_version": 1,
+      "sequence": 5,
+      "source": "polar_sdk"
+    },
+    {
+      "callback_variant": "hrNotificationReceived",
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "device_id": "fixture-id-0003",
+      "event_type": "hr",
+      "payload": {
+        "contactStatus": false,
+        "contactStatusSupported": true,
+        "correctedHr": -2,
+        "hr": 0,
+        "ppgQuality": 101,
+        "rrAvailable": false,
+        "rrs": [
+          1024,
+          0,
+          1024
+        ],
+        "rrsMs": [
+          1000,
+          0,
+          1000
+        ]
+      },
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "received_elapsed_ns": "1000000001",
+      "received_utc_ms": 1700000000000,
+      "schema_version": 1,
+      "sequence": 6,
+      "source": "polar_sdk"
+    }
+  ],
+  "fixture_version": 1,
+  "initial_state": {
+    "as_of_elapsed_ns": "1000000000",
+    "confidence": "source_metadata_unverified",
+    "configuration": {
+      "active_ms": 0,
+      "automatic_reconnection": true,
+      "connected_device_id": null,
+      "hr_stale_after_ms": 5000,
+      "last_hr": null,
+      "last_hr_received_elapsed_ns": null,
+      "route_enabled": false,
+      "session_id": null,
+      "session_state": "preparation"
+    },
+    "context_policy": "full_available_prefix",
+    "focus_at_elapsed_ns": "1000000001",
+    "last_hr_age_ns": null
+  },
+  "kind": "synthetic",
+  "limitations": [
+    "initial_snapshot_activation_unverified",
+    "commands_and_external_effects_not_proven_complete",
+    "pseudonymization_is_not_anonymization",
+    "input_suffix_omitted",
+    "processing_omitted",
+    "retained_processing_after_last_retained_receipt"
+  ],
+  "processing": [
+    {
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "command_id": null,
+      "error": null,
+      "input_sequence": 1,
+      "outcome": "applied",
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "processed_elapsed_ns": "11000000001",
+      "processed_utc_ms": 1699999999000,
+      "processing_sequence": 1,
+      "schema_version": 1,
+      "session_id": null
+    },
+    {
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "command_id": null,
+      "error": null,
+      "input_sequence": 2,
+      "outcome": "applied",
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "processed_elapsed_ns": "11000000001",
+      "processed_utc_ms": 1699999999000,
+      "processing_sequence": 2,
+      "schema_version": 1,
+      "session_id": null
+    },
+    {
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "command_id": null,
+      "error": null,
+      "input_sequence": 3,
+      "outcome": "applied",
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "processed_elapsed_ns": "11000000001",
+      "processed_utc_ms": 1699999999000,
+      "processing_sequence": 3,
+      "schema_version": 1,
+      "session_id": null
+    },
+    {
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "command_id": null,
+      "error": null,
+      "input_sequence": 4,
+      "outcome": "applied",
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "processed_elapsed_ns": "11000000001",
+      "processed_utc_ms": 1699999999000,
+      "processing_sequence": 4,
+      "schema_version": 1,
+      "session_id": null
+    },
+    {
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "command_id": null,
+      "error": null,
+      "input_sequence": 5,
+      "outcome": "applied",
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "processed_elapsed_ns": "11000000001",
+      "processed_utc_ms": 1699999999000,
+      "processing_sequence": 5,
+      "schema_version": 1,
+      "session_id": null
+    },
+    {
+      "capture_id": "00000000-0000-4000-8000-000000000004",
+      "command_id": null,
+      "error": null,
+      "input_sequence": 6,
+      "outcome": "applied",
+      "process_run_id": "00000000-0000-4000-8000-000000000002",
+      "processed_elapsed_ns": "11000000001",
+      "processed_utc_ms": 1699999999000,
+      "processing_sequence": 6,
+      "schema_version": 1,
+      "session_id": null
+    }
+  ],
+  "provenance": {
+    "converter_version": "1.0.0",
+    "omitted_after_events": 15,
+    "omitted_processing": 15,
+    "origin_evidence": "operator_declared_kind",
+    "original_input_range": {
+      "first": 1,
+      "last": 21
+    },
+    "prehistory_events": 5,
+    "requested_input_range": {
+      "first": 6,
+      "last": 6
+    },
+    "retained_counts": {
+      "events": 6,
+      "processing": 6
+    },
+    "retained_input_range": {
+      "first": 1,
+      "last": 6
+    },
+    "schema_sha256": {
+      "event": "bbf02bcb7f01554496f8d38f1042e2e65a8b3aa223db4892c6a0149b3bc6f374",
+      "manifest": "1c54e33c9db485daad356b671de16404382362eb31787bf695b61d24b2d4d211",
+      "processing": "ba9e8baf2ab3bec78cd9e110619fcc0e22dc54f3280aaa300305936de2511215"
+    },
+    "source_archive_sha256": "7c4095e7ddcd5d839ad06c4347a1ef522b31d659a7fc0f126a8df6d6b175de79",
+    "source_completeness": {
+      "checkpoint": {
+        "checkpoint_persisted": true,
+        "known_lost_events": 0,
+        "known_lost_processing": 0,
+        "last_committed_processing_sequence": 21,
+        "last_committed_sequence": 21,
+        "last_error_class": null,
+        "last_error_code": null,
+        "received_events": 21,
+        "received_processing": 21,
+        "saved_events": 21,
+        "saved_processing": 21,
+        "unknown_tail": false,
+        "unprocessed_inputs": 0
+      },
+      "state": "complete"
+    },
+    "source_counts": {
+      "events": 21,
+      "processing": 21
+    },
+    "source_schema_version": 1,
+    "transformations": [
+      "available_prefix_retained",
+      "identifiers_pseudonymized",
+      "free_text_replaced",
+      "sense_name_filter_preserved",
+      "utc_shifted_uniformly",
+      "sequence_and_monotonic_time_unchanged",
+      "source_metadata_minimized"
+    ],
+    "utc_policy": {
+      "mode": "shift_to_epoch",
+      "target_start_utc_ms": 1700000000000
+    }
+  },
+  "replay_ready": false,
+  "scenario": "native-hr-focus"
+}

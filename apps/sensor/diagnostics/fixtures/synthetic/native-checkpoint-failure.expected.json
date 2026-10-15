@@ -1,0 +1,69 @@
+{
+  "expectations_version": 1,
+  "fixture": "native-checkpoint-failure.fixture.json",
+  "basis": [
+    {
+      "id": "fault",
+      "reference": "modules/veymur-recorder/tests/android/com/veymur/recorder/core/DiagnosticExportTest.kt::failedFinalCheckpointExportsHonestAvailablePrefixAndFailedOutputNeverReturnsFile",
+      "reason": "The input and processing are committed first; a separate trigger rejects the terminal checkpoint transaction."
+    },
+    {
+      "id": "contract",
+      "reference": "D5 manifest checkpoint_persisted semantics",
+      "reason": "Available rows do not turn a failed final checkpoint into a complete capture."
+    }
+  ],
+  "data_assertions": [
+    {
+      "path": "events",
+      "operation": "length",
+      "value": 1,
+      "basis": "fault"
+    },
+    {
+      "path": "processing",
+      "operation": "length",
+      "value": 1,
+      "basis": "fault"
+    },
+    {
+      "path": "provenance.source_completeness.state",
+      "operation": "equals",
+      "value": "incomplete",
+      "basis": "contract"
+    },
+    {
+      "path": "provenance.source_completeness.checkpoint.checkpoint_persisted",
+      "operation": "equals",
+      "value": false,
+      "basis": "contract"
+    },
+    {
+      "path": "provenance.source_completeness.checkpoint.unknown_tail",
+      "operation": "equals",
+      "value": true,
+      "basis": "contract"
+    },
+    {
+      "path": "completeness.source_complete",
+      "operation": "equals",
+      "value": false,
+      "basis": "contract"
+    },
+    {
+      "path": "provenance.source_completeness.checkpoint.last_error_code",
+      "operation": "equals",
+      "value": "write_failed",
+      "basis": "contract"
+    }
+  ],
+  "replay_expectations": [
+    {
+      "basis": "contract",
+      "condition": "D7 loads this fixture",
+      "expected": "Replay of available callback rows cannot prove successful finish/commit, recover the failed DB transaction, or hide the incomplete source."
+    }
+  ],
+  "observed_processing_is_not_oracle": true,
+  "replay_assertions_executed": false
+}

@@ -18,6 +18,15 @@ npm run test:diagnostics
 
 Exit 0 means the archive is structurally valid; read `state`, losses and `unknown_tail` in the JSON report to determine completeness. `replay_ready:false` remains explicit until D6–D7. Unknown schema, checksum errors, broken references or malformed ZIP return exit 1. Raw data is not printed or uploaded.
 
+D6 adds `scripts/prepare_polar_fixture.py` and a [reviewed synthetic fixture catalogue](diagnostics/fixtures/README.md), with source SHA-256, explicit prefix context, consistent pseudonyms, UTC policy and separately authored expectations. Hardware fixtures remain pending. The tool never changes the original ZIP, overwrites output or stages data in Git. Native code/bridge remain D5/v5.
+
+```bash
+python3 scripts/prepare_polar_fixture.py prepare /private/capture.zip --kind synthetic --scenario hr-gap --output /private/hr-gap.fixture.json
+python3 scripts/prepare_polar_fixture.py check /private/hr-gap.fixture.json --source /private/capture.zip
+```
+
+D6 verifies fixture preparation; the native replay engine and its expected-result assertions remain D7. See [D6 commands, results and limits](../../docs/diagnostic/polar-diagnostic-d6-implementation.md).
+
 The Stage 0 recorder and stage 2 dependency probe remain separately installed/testable:
 
 | App | Android applicationId |

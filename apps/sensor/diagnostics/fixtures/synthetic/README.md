@@ -6,4 +6,4 @@ Run `npm test` from `apps/sensor` to validate every example with draft-07 JSON S
 
 Native instrumentation independently calls all SDK callback signatures with synthetic arguments and writes `polar-d2-synthetic-contract.json` to the dedicated test emulator's app external files directory for host schema verification. This generated file is not automatically added to Git.
 
-Hardware fixtures and provenance-preserving conversion remain D6/D8 tasks. Do not add original personal recordings here.
+D6 now adds four pseudonymized `*.fixture.json` derivatives of native synthetic D5 exports, each with independently authored `*.expected.json`. See the [catalogue, conversion commands and limitations](../README.md). They are distinct from these D1 contract examples. Hardware collection remains D8; no original personal recording belongs here.

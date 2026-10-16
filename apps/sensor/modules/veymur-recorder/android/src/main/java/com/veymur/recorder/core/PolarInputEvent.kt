@@ -16,6 +16,8 @@ data class PolarInputEvent(
     val callbackVariant: String,
     val deviceId: String?,
     val payloadJson: String,
+    // Live-only receipt context. Legacy diagnostic v1 captures did not persist timezone.
+    val receivedTimezoneId: String? = null,
 ) {
     fun payload() = JSONObject(payloadJson)
     fun toJson(): JSONObject = JSONObject()
@@ -83,10 +85,11 @@ class PolarInputBoundary(
             // Time and sequence are sampled before copying and before the recorder worker queue.
             val utc = utcNow()
             val elapsed = elapsedNowNs()
+            val timezone = java.time.ZoneId.systemDefault().id
             val sequence = inputSequence.incrementAndGet()
             val target = sink
             val event = PolarInputEvent(target?.captureId, processRunId, sequence, utc, elapsed,
-                source, eventType, variant, deviceId, payload().toString())
+                source, eventType, variant, deviceId, payload().toString(), timezone)
             offer { target?.offerInput(event) }
             dispatch(PolarInputDelivery(event, target))
         }

@@ -16,9 +16,11 @@ data class Identity(val id: String, val schema_version: Int, val local_profile_i
 data class SourceTimestamp(val value: String, val unit: String, val utc_conversion: String?)
 data class RecordEnvelope(
     val identity: Identity, val source_type: SourceType, val source_id: String,
-    val observed_at_utc: String?, val recorded_at_utc: String, val timezone_id: String,
+    val observed_at_utc: String?, val recorded_at_utc: String, val timezone_id: String?,
     val time_origin: TimeOrigin, val monotonic_offset_ms: Long, val timebase_id: String,
-    val source_timestamp: SourceTimestamp?, val session_id: String, val sequence: Long,
+    val source_timestamp: SourceTimestamp?, val receipt_elapsed_realtime_ns: String,
+    val source_elapsed_realtime_ns: String?, val observed_monotonic_offset_ms: Long?,
+    val normalization_version: String, val quality_reasons: List<String>, val session_id: String, val sequence: Long,
     val quality_flags: List<QualityFlag>
 )
 data class HrObservation(val envelope: RecordEnvelope, val segment_id: String, val value: Int, val unit: HrUnit, val contact_detected: Boolean?)

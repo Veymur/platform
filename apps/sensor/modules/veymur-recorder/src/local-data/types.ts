@@ -17,16 +17,30 @@ export interface Source {
 export interface Time {
   observed_at_utc: string | null;
   recorded_at_utc: string;
-  timezone_id: string;
+  timezone_id: string | null;
   time_origin: 'measurement' | 'receipt' | 'user_action' | 'recovery';
   monotonic_offset_ms: number;
   timebase_id: string;
+  receipt_elapsed_realtime_ns: string;
+  source_elapsed_realtime_ns: string | null;
+  observed_monotonic_offset_ms: number | null;
   source_timestamp: { value: string; unit: string; utc_conversion: string | null } | null;
 }
-export interface RecordEnvelope extends Identity, Source, Time {
+export interface ObservationMetadata extends Time {
+  normalization_version: 'native-observation-v1';
+  quality_flags: readonly QualityFlag[];
+  quality_reasons: readonly string[];
+}
+/** Derived, never written back into raw quality_flags. */
+export interface HrUsability {
+  method_version: 'hr-usability-v1';
+  stale_after_ms: number;
+  usable: boolean;
+  reasons: readonly string[];
+}
+export interface RecordEnvelope extends Identity, Source, ObservationMetadata {
   session_id: string;
   sequence: number;
-  quality_flags: readonly QualityFlag[];
 }
 export interface HrObservation extends RecordEnvelope {
   source_type: 'polar_hr';

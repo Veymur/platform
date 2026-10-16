@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.Location
+import com.veymur.recorder.core.localdata.*
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.*
@@ -51,6 +52,7 @@ class RecorderService : Service() {
     companion object { private val revisions = AtomicLong() }
     private val clock = RecordingClock { SystemClock.elapsedRealtime() }
     private lateinit var api: PolarBleApi
+    private val observationNormalizer = ObservationNormalizer()
     private val polarInputs: PolarInputBoundary = PolarInputBoundary(
         utcNow = { System.currentTimeMillis() }, elapsedNowNs = { SystemClock.elapsedRealtimeNanos() },
         dispatch = ::enqueuePolarInput)
@@ -74,17 +76,36 @@ class RecorderService : Service() {
     }
     private val gps by lazy { getSystemService(LocationManager::class.java) }
     private val locations = object : LocationListener {
-        override fun onLocationChanged(location: Location) = enqueue {
-            if (snapshot.recording && !snapshot.paused) {
-                record("gps", JSONObject().put("latitude", location.latitude).put("longitude", location.longitude)
-                    .put("accuracy_m", location.accuracy).put("observed_utc_ms", location.time)
-                    .put("source_elapsed_nanos", location.elapsedRealtimeNanos).put("mock", location.isMock))
-                snapshot = snapshot.copy(gpsCount = snapshot.gpsCount + 1, gpsStatus = "Saving coordinates")
+        override fun onLocationChanged(location: Location) {
+            val receipt = Receipt(System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos(),
+                PolarInputBoundary.processRunId, java.time.ZoneId.systemDefault().id)
+            // Own the callback values before queueing; optional Android fields require hasX checks.
+            val input = locationObservationInput(location)
+            enqueue {
+                if (routeEnabled && snapshot.recording && !snapshot.paused) {
+                    val sample = try { observationNormalizer.gps(input, receipt) }
+                    catch (error: InvalidObservation) {
+                        record("gps_rejected", JSONObject().put("reason", error.reason)
+                            .put("latitude_raw", input.latitude.toString()).put("longitude_raw", input.longitude.toString())
+                            .put("received_utc_ms", receipt.utc_ms).put("received_elapsed_ns", receipt.elapsed_ns.toString())
+                            .put("timebase_id", receipt.timebase_id))
+                        snapshot = snapshot.copy(gpsStatus = "Invalid coordinates; heart rate recording continues")
+                        return@enqueue
+                    }
+                    record("gps", JSONObject().put("latitude", sample.value.latitude).put("longitude", sample.value.longitude)
+                        .put("accuracy_m", sample.value.horizontal_accuracy_m ?: JSONObject.NULL)
+                        .put("altitude_m", sample.value.altitude_m ?: JSONObject.NULL).put("speed_m_s", sample.value.speed_m_s ?: JSONObject.NULL)
+                        .put("observed_utc_ms", input.utc_ms ?: JSONObject.NULL)
+                        .put("source_elapsed_nanos", input.elapsed_ns ?: JSONObject.NULL).put("mock", input.mock)
+                        .put("observation_metadata", observationMetadata(sample.time, sample.quality)))
+                    snapshot = snapshot.copy(gpsCount = snapshot.gpsCount + 1, gpsStatus = "Saving coordinates")
+                }
             }
         }
         override fun onProviderDisabled(provider: String) = enqueue {
             snapshot = snapshot.copy(gpsStatus = "GPS disabled; heart rate recording continues")
-            record("gps_unavailable", JSONObject().put("provider", provider))
+            record("gps_unavailable", JSONObject().put("provider", provider).put("stream", "gps")
+                .put("quality_flags", org.json.JSONArray(listOf("missing"))))
         }
         override fun onProviderEnabled(provider: String) = enqueue { snapshot = snapshot.copy(gpsStatus = "Waiting for coordinates") }
     }
@@ -129,7 +150,7 @@ class RecorderService : Service() {
         polarInputs.process(delivery, { session }, ::processPolarInput)
     }
     private val control = RecorderControl({ engine!! }, { snapshot }, { snapshot = it }, System::currentTimeMillis)
-    private val processor = PolarRecorderProcessor({ snapshot }, { snapshot = it }, clock, deviceDetails, ::record)
+    private val processor = PolarRecorderProcessor({ snapshot }, { snapshot = it }, clock, deviceDetails, observationNormalizer, ::record)
     private fun processPolarInput(event: PolarInputEvent): Boolean = processor.process(event)
     private val tick = object : Runnable {
         override fun run() {

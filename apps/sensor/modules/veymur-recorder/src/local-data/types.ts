@@ -96,3 +96,58 @@ export interface Settings extends Identity {
   hr_ranges_id: string | null;
   alerts: { enabled: boolean; sound: boolean; vibration: boolean; debounce_ms: number; hysteresis_bpm: number; repeat_ms: number | null };
 }
+
+/** Native aggregate projection. Exact nanoseconds cross the future bridge as decimal strings. */
+export interface AggregateParameters {
+  hr_stale_after_ms: number;
+  gps_max_accuracy_m: number;
+  gps_max_gap_ms: number;
+  gps_max_speed_m_s: number;
+  map_hr_window_ms: number;
+}
+export interface ActiveSegment {
+  segment_id: string;
+  timebase_id: string;
+  start_elapsed_ns: string;
+  end_elapsed_ns: string;
+  start_sequence: number;
+  end_sequence: number;
+}
+export interface HrInterval {
+  observation_id: string;
+  sequence: number;
+  segment_id: string;
+  timebase_id: string;
+  start_elapsed_ns: string;
+  end_elapsed_ns: string;
+  value_bpm: number;
+}
+export interface RoutePoint {
+  observation_id: string;
+  sequence: number;
+  elapsed_ns: string;
+  latitude: number;
+  longitude: number;
+  hr_observation_id: string | null;
+  hr_bpm: number | null;
+  hr_delta_ms: number | null;
+}
+export interface SessionAggregates {
+  method_version: 'local-session-aggregates-v1';
+  distance_method_version: 'haversine-sphere-v1';
+  sphere_radius_m: number;
+  parameters: AggregateParameters;
+  hr_ranges_snapshot: HrRanges | null;
+  active_segments: readonly ActiveSegment[];
+  interrupted_tail_unknown: boolean;
+  active_duration_ms: number;
+  hr_covered_duration_ms: number;
+  hr_coverage: number | null;
+  average_hr_bpm: number | null;
+  range_durations: readonly { range_id: string; duration_ms: number }[];
+  unassigned_hr_duration_ms: number;
+  hr_intervals: readonly HrInterval[];
+  route_segments: readonly { segment_id: string; timebase_id: string; points: readonly RoutePoint[] }[];
+  gps_distance_m: number | null;
+  exclusions: readonly { observation_id: string; stream: 'hr' | 'gps'; reasons: readonly string[] }[];
+}

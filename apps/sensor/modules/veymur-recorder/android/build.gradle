@@ -23,3 +23,15 @@ dependencies {
   implementation 'androidx.core:core-ktx:1.16.0'
   testImplementation 'junit:junit:4.13.2'
 }
+
+// Optional private aggregate fixtures must invalidate cached test results when changed/enabled.
+tasks.withType(Test).configureEach {
+  def aggregateFixtures = System.getenv('VEYMUR_AGGREGATE_FIXTURES')
+  inputs.property('aggregateValidationDirectory', aggregateFixtures ?: '')
+  if (aggregateFixtures) {
+    inputs.files(fileTree(aggregateFixtures) {
+      include '*.tsv'
+      exclude 'parameter-sensitivity.tsv'
+    }).withPropertyName('aggregateValidationInputs')
+  }
+}

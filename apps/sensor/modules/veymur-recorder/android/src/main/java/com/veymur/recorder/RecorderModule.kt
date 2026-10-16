@@ -38,7 +38,7 @@ class RecorderModule : Module() {
         Name("VeymurRecorder")
         Events("onSnapshot")
         AsyncFunction("getModuleInfo") {
-            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 5, "recorderImplemented" to true)
+            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 6, "recorderImplemented" to true)
         }
         AsyncFunction("ensureActivity") { promise: Promise -> main.post {
             try { requireRecorderActivity(appContext.currentActivity, visible = true); promise.resolve(mapOf("available" to true)) }
@@ -46,6 +46,7 @@ class RecorderModule : Module() {
         } }
         OnActivityEntersForeground { main.post { hostVisible = true; service?.activityVisible(true) } }
         OnActivityEntersBackground { main.post { hostVisible = false; service?.activityVisible(false) } }
+        AsyncFunction("localData") { request: String, promise: Promise -> command("localData", promise, argument = request) }
         AsyncFunction("getSnapshot") { promise: Promise -> command("getSnapshot", promise) }
         AsyncFunction("search") { promise: Promise -> command("search", promise) }
         AsyncFunction("cancelSearch") { promise: Promise -> command("cancelSearch", promise) }

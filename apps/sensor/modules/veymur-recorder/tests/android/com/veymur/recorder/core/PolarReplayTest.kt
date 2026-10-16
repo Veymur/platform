@@ -76,7 +76,9 @@ class PolarReplayTest {
         assertEquals(7800L, first.clock.activeMs()) // (1200-200)+(16000-9200)
         val rows = first.records.map(::JSONObject)
         val hr = rows.filter { it.getString("kind") == "hr" }.map { it.getJSONObject("payload").getInt("bpm") }
-        assertEquals(listOf(80, 80, 0, -2, 400, 82), hr)
+        assertEquals(listOf(80, 80, 400, 82), hr)
+        assertEquals(listOf(0, -2), rows.filter { it.getString("kind") == "hr_rejected" }
+            .map { it.getJSONObject("payload").getJSONObject("raw_payload").getInt("hr") })
         assertEquals(1, rows.count { it.getString("kind") == "pause" })
         assertEquals(1, rows.count { it.getString("kind") == "resume" })
         val boundary = first.observations.map(::JSONObject).filter { it.getString("elapsed_ns") in setOf("14800000000", "14801000000") }

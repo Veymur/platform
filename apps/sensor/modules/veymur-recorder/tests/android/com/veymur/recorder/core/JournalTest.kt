@@ -3,6 +3,7 @@ package com.veymur.recorder.core
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
+import com.veymur.recorder.core.localdata.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,8 +26,14 @@ class JournalTest {
         context.deleteDatabase("stage0.db")
         val journal = Journal(context)
         val id = journal.begin("TEST-VERITY", true)
-        journal.append(id, "hr", JSONObject().put("bpm", 82))
-        journal.append(id, "gps", JSONObject().put("latitude", 52.0).put("longitude", 21.0))
+        val normalizer = ObservationNormalizer()
+        val receipt = Receipt(1700000000000, 1000000001, "journal-test", "Europe/Warsaw")
+        val hr = normalizer.hr(82, false, true, receipt)
+        val gps = normalizer.gps(GpsInput(52.0, 21.0, null, null, null, 1699999999900, 900000001, false), receipt)
+        journal.append(id, "hr", JSONObject().put("bpm", hr.value)
+            .put("observation_metadata", observationMetadata(hr.time, hr.quality)))
+        journal.append(id, "gps", JSONObject().put("latitude", gps.value.latitude).put("longitude", gps.value.longitude)
+            .put("accuracy_m", JSONObject.NULL).put("observation_metadata", observationMetadata(gps.time, gps.quality)))
         journal.close()
         val header = context.getDatabasePath("stage0.db").inputStream().use { stream -> ByteArray(16).also { stream.read(it) } }
         assertFalse(String(header).startsWith("SQLite format 3"))
@@ -41,6 +48,16 @@ class JournalTest {
             assertEquals(5, rows.size) // header + start + HR + GPS + interrupted
             assertTrue(rows[2].contains(",hr,"))
             assertTrue(rows[3].contains(",gps,"))
+            fun payload(row: String, kind: String) = JSONObject(row.substringAfter(",$kind,")
+                .removeSurrounding("\"").replace("\"\"", "\""))
+            val savedHr = payload(rows[2], "hr").getJSONObject("observation_metadata")
+            assertTrue(savedHr.has("observed_at_utc")); assertTrue(savedHr.isNull("observed_at_utc"))
+            assertEquals("2023-11-14T22:13:20Z", savedHr.getString("recorded_at_utc"))
+            assertEquals("journal-test", savedHr.getString("timebase_id"))
+            assertEquals("sensor_contact_lost", savedHr.getJSONArray("quality_reasons").getString(0))
+            val savedGps = payload(rows[3], "gps")
+            assertTrue(savedGps.has("accuracy_m")); assertTrue(savedGps.isNull("accuracy_m"))
+            assertEquals("900000001", savedGps.getJSONObject("observation_metadata").getString("source_elapsed_realtime_ns"))
         }
         reopened.close()
     }

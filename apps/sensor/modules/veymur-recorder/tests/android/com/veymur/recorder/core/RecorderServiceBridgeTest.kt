@@ -420,4 +420,25 @@ class RecorderServiceBridgeTest {
             command(service, "finish").getOrThrow()
         } finally { command(service, "stopDiagnostic"); command(service, "finish"); unbind(binding) }
     }
+    @Test fun localHistoryErrorsDoNotStopActiveRecorderAndReadsNeedNoBluetooth() {
+        val binding = bind(); val service = binding.service
+        try {
+            val db = isolated(service)
+            val empty = command(service, "localData", argument = """{"operation":"list","limit":10,"before":null}""").getOrThrow()
+            assertEquals(emptyList<Any>(), empty["items"])
+            assertEquals(false, service.snapshot.recording)
+            foreground(service)
+            val id = command(service, "start").getOrThrow()["sessionId"] as String
+            for (request in listOf("not JSON", """{"operation":"list","limit":0,"before":null}""", """{"operation":"delete","id":"$id"}""")) {
+                assertTrue(command(service, "localData", argument = request).exceptionOrNull() is RecorderError)
+                assertEquals("recording", command(service, "getSnapshot").getOrThrow()["sessionState"])
+            }
+            writer(service) { db.execSQL("CREATE TRIGGER reject_preferences BEFORE INSERT ON settings BEGIN SELECT RAISE(ABORT,'test'); END") }
+            val failed = command(service, "localData", argument = """{"operation":"saveSettings","expected_revision":0,"value":{"units":"metric","timezone_id":"UTC","theme":"system","route_enabled":false,"hr_ranges_id":null,"alerts":{"enabled":false,"sound":false,"vibration":false,"debounce_ms":0,"hysteresis_bpm":0,"repeat_ms":null}}}""")
+            assertEquals("STORAGE_ERROR", (failed.exceptionOrNull() as RecorderError).code)
+            assertEquals("recording", command(service, "getSnapshot").getOrThrow()["sessionState"])
+            command(service, "finish").getOrThrow()
+            assertEquals(true, command(service, "localData", argument = """{"operation":"delete","id":"$id"}""").getOrThrow()["data_deleted"])
+        } finally { command(service, "finish"); unbind(binding) }
+    }
 }

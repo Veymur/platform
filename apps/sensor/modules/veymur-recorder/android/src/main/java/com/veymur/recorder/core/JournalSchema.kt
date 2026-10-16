@@ -4,7 +4,7 @@ import android.content.ContentValues
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import java.util.UUID
 
-const val JOURNAL_DATABASE_VERSION = 2
+const val JOURNAL_DATABASE_VERSION = 3
 class UnsupportedJournalVersion(val foundVersion: Int) : IllegalStateException("Unsupported recorder database version: $foundVersion")
 
 /** Only schema/data changes live here. The caller opens supported stores and owns the connection. */
@@ -34,6 +34,10 @@ internal object JournalSchema {
                         db.execSQL("PRAGMA user_version=1")
                     }
                     1 -> { migrateV1(db, nowUtcMs); db.execSQL("PRAGMA user_version=2") }
+                    2 -> {
+                        db.execSQL("CREATE TABLE local_deletion_cleanup (session_id TEXT PRIMARY KEY NOT NULL)")
+                        db.execSQL("PRAGMA user_version=3")
+                    }
                     else -> error("No migration path")
                 }
             }

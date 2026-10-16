@@ -79,7 +79,7 @@ class JournalMigrationTest {
         val identity: JournalLocalIdentity; val assigned: List<List<String?>>
         Journal(f.context).use { journal ->
             val db = db(journal); identity = journal.localIdentity
-            assertEquals(2, scalar(db, "PRAGMA user_version")); assertEquals(1, scalar(db, "PRAGMA foreign_keys"))
+            assertEquals(JOURNAL_DATABASE_VERSION.toLong(), scalar(db, "PRAGMA user_version")); assertEquals(1, scalar(db, "PRAGMA foreign_keys"))
             assertEquals(sessions, snapshot(db, "sessions", "id,device,started,state,active_ms,gps", "id"))
             assertEquals(records, snapshot(db, "records", "sequence,session,received_utc,elapsed_ms,kind,payload", "sequence"))
             assigned = snapshot(db, "records", "sequence,id,local_profile_id", "sequence")

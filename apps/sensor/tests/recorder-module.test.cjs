@@ -39,7 +39,7 @@ function wrapper(platform, nativeInfo) {
 const info = {
   moduleName: "VeymurRecorder",
   platform: "android",
-  contractVersion: 5,
+  contractVersion: 6,
   recorderImplemented: true,
 };
 

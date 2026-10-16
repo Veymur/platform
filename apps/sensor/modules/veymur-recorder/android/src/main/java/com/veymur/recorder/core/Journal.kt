@@ -53,6 +53,10 @@ class Journal(private val context: Context, private val stamp: () -> JournalStam
         try { val value = action(); db.setTransactionSuccessful(); return value }
         finally { db.endTransaction() }
     }
+    fun localData(request: JSONObject): Map<String, Any?> {
+        owner()
+        return JournalOperations(db, localIdentity, File(context.cacheDir, "exports"), ::recalculate).execute(request)
+    }
     fun recoverInterrupted(): Int = transaction {
         val ids = mutableListOf<String>()
         db.rawQuery("SELECT id FROM sessions WHERE state IN ('recording','paused','finishing')", null).use {
@@ -70,6 +74,7 @@ class Journal(private val context: Context, private val stamp: () -> JournalStam
             put("id", id); put("device", device); put("started", now.utcMs); put("state", "recording"); put("gps", if (gps) 1 else 0)
             put("route_requested", if ((configuration?.opt("route_requested") as? Boolean) ?: gps) 1 else 0)
             put("schema_version", 1); put("local_profile_id", localIdentity.localProfileId); put("installation_id", localIdentity.installationId)
+            JournalOperations.selectedRanges(db, localIdentity.localProfileId)?.let { put("hr_ranges_snapshot", it.toString()) }
             put("timezone_id", now.timezoneId); put("hr_state", "waiting"); put("gps_state", if (gps) "waiting" else "disabled"); put("storage_origin", "native_v2")
         })
         append(id, "start", JSONObject()); configuration?.let { append(id, "configuration", it) }
@@ -158,8 +163,8 @@ class Journal(private val context: Context, private val stamp: () -> JournalStam
                 .put("storage_origin", it.getString(7))
         }
         val directory = File(context.cacheDir, "exports").also { it.mkdirs() }
+        val output = JournalOperations.exportFile(directory, id)
         directory.listFiles()?.filter { it.lastModified() < System.currentTimeMillis() - 86400000 }?.forEach { it.delete() }
-        val output = File(directory, "veymur-$id.zip")
         ZipOutputStream(output.outputStream()).use { zip ->
             zip.putNextEntry(ZipEntry("metadata.json")); zip.write(metadata.toString(2).toByteArray()); zip.closeEntry()
             zip.putNextEntry(ZipEntry("records.csv"))

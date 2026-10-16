@@ -307,6 +307,15 @@ class RecorderService : Service() {
                     }
                     else -> workerCommand(done, command) {
                         when (name) {
+                            "localData" -> {
+                                try {
+                                    if (argument == null || argument.length > 65536) throw RecorderError("INVALID_ARGUMENT", "Invalid local request")
+                                    journal!!.localData(JSONObject(argument))
+                                } catch (e: RecorderError) { throw e }
+                                catch (e: IllegalArgumentException) { throw RecorderError("INVALID_ARGUMENT", "Invalid local request") }
+                                catch (e: org.json.JSONException) { throw RecorderError("INVALID_ARGUMENT", "Invalid local request") }
+                                catch (e: Exception) { throw RecorderError("STORAGE_ERROR", "Local operation failed; retry without resetting storage") }
+                            }
                             "getSnapshot" -> dto()
                             "pause", "resume" -> {
                                 control.pauseOrResume(name)

@@ -8,7 +8,7 @@ export class RecorderClientError extends Error {
     super(message, { cause }); this.name = 'RecorderClientError';
   }
 }
-function recorderError(error: unknown): RecorderClientError {
+export function recorderError(error: unknown): RecorderClientError {
   if (error instanceof RecorderClientError) return error;
   const value = error !== null && typeof error === 'object' ? error as { code?: unknown; message?: unknown } : {};
   const code = typeof value.code === 'string' && codes.has(value.code) ? value.code as RecorderErrorCode : 'SERVICE_UNAVAILABLE';

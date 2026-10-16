@@ -119,7 +119,7 @@ class NativeCoreStorageTest {
             assertEquals(3, rows(file).size) // header, start and committed HR
             assertFalse(rows(file).any { it.contains(",reject,") })
             db.rawQuery("PRAGMA user_version", null).use { cursor ->
-                assertTrue(cursor.moveToFirst()); assertEquals(1, cursor.getInt(0))
+                assertTrue(cursor.moveToFirst()); assertEquals(JOURNAL_DATABASE_VERSION, cursor.getInt(0))
             }
         } finally { journal.close() }
     }

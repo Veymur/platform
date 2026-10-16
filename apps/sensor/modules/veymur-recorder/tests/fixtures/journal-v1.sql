@@ -1,0 +1,16 @@
+CREATE TABLE sessions (id TEXT PRIMARY KEY, device TEXT NOT NULL, started INTEGER NOT NULL, state TEXT NOT NULL, active_ms INTEGER NOT NULL DEFAULT 0, gps INTEGER NOT NULL);
+CREATE TABLE records (sequence INTEGER PRIMARY KEY AUTOINCREMENT, session TEXT NOT NULL, received_utc INTEGER NOT NULL, elapsed_ms INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
+PRAGMA user_version=1;
+INSERT INTO sessions VALUES ('legacy-completed','SYNTHETIC',1700000000000,'completed',3000,1);
+INSERT INTO sessions VALUES ('legacy-active','SYNTHETIC',1700000100000,'recording',1000,0);
+INSERT INTO records VALUES (1,'legacy-completed',1700000000000,1000,'start','{}');
+INSERT INTO records VALUES (3,'legacy-completed',1700000001000,2000,'hr','{ "bpm" : 82, "opaque" : "Example, \"x\"", "unknown" : null }');
+INSERT INTO records VALUES (5,'legacy-completed',1700000002000,3000,'gps','{"latitude":0.0,"longitude":0.0,"accuracy_m":null,"source_elapsed_nanos":2999000001}');
+INSERT INTO records VALUES (6,'legacy-completed',1700000002000,3000,'pause','{}');
+INSERT INTO records VALUES (8,'legacy-completed',1600000000000,6000,'resume','{}');
+INSERT INTO records VALUES (10,'legacy-completed',1600000001000,7000,'finish','{"active_ms":3000}');
+INSERT INTO records VALUES (11,'legacy-active',1700000100000,8000,'start','{}');
+INSERT INTO records VALUES (13,'legacy-active',1700000101000,9000,'hr','{"bpm":90}');
+INSERT INTO records VALUES (14,'legacy-active',1700000101100,9100,'opaque','not-json: retain verbatim');
+INSERT INTO records VALUES (500,'legacy-active',1700000101200,9200,'deleted','{}');
+DELETE FROM records WHERE sequence=500;

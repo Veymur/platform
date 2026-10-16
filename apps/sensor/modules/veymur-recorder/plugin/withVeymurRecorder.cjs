@@ -72,6 +72,9 @@ dependencies {
       const target = path.join(config.modRequest.platformProjectRoot, 'app/src/androidTest/java');
       await fs.mkdir(target, { recursive: true });
       await fs.cp(tests, target, { recursive: true });
+      const storageAssets = path.join(config.modRequest.platformProjectRoot, 'app/src/androidTest/assets/local-data');
+      await fs.mkdir(storageAssets, { recursive: true });
+      await fs.cp(path.resolve(__dirname, '../tests/fixtures'), storageAssets, { recursive: true });
       const replayAssets = path.join(config.modRequest.platformProjectRoot, 'app/src/androidTest/assets/polar');
       await fs.mkdir(replayAssets, { recursive: true });
       await fs.cp(path.resolve(__dirname, '../../../diagnostics/fixtures/synthetic'), replayAssets, { recursive: true });

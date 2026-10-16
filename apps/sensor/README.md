@@ -206,3 +206,13 @@ Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings
 ### Local history API
 
 `LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v6; no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history screens, CSV/GPX, and deletion confirmation UI remain separate work. See [local operations contract and verification](../../docs/local-data-operations.md).
+
+### Local data verification
+
+The [combined verification report](../../docs/local-data-validation.md) records schema v3/bridge v6 fixtures, private legacy parameter sensitivity, offline API-34 tests, and the current embedded-JS APK identity. `LocalDataValidationTest` checks a saved normalized HR/GPS session across clock changes, stream losses, pause, reopen and deletion. To verify actual process termination on the named **dedicated emulator only**, after installing debug and test APKs:
+
+```sh
+ANDROID_HOME="$HOME/.cache/veymur-stage0/android-sdk" python3 scripts/verify-local-data-process-death.py --serial emulator-5554
+```
+
+The driver rejects physical serials and mismatched AVDs. It force-stops only the dedicated emulator test host, verifies the committed prefix/uncommitted rollback and interrupted aggregates in a fresh process. Ordinary instrumentation skips this probe; use the driver for both phases. [Physical phone protocol](../../docs/recorder-validation.md) remains open; emulator success does not establish BLE, GPS, locked-screen persistence or battery behavior on a phone.

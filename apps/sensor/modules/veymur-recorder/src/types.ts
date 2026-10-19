@@ -20,7 +20,7 @@ export type RecorderSnapshot = {
   hrCount: number; gpsCount: number; activeMs: number; lastCommitUtcMs: number | null;
   gpsStatus: string; routeEnabled: boolean; recoveredCount: number; errorCode: RecorderErrorCode | null;
 };
-export type SessionResult = { sessionId: string; state: 'recording' | 'paused' | 'completed' };
+export type SessionResult = { sessionId: string; state: 'recording' | 'paused' | 'completed' | 'interrupted' };
 export type ExportResult = { uri: string; mimeType: 'application/zip' };
 export interface NativeRecorderModule {
   localData(request: string): Promise<unknown>;

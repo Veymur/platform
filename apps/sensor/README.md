@@ -250,3 +250,41 @@ Source scan found no Cyrillic outside `/docs`; no Cyrillic file/directory names
 were found in project sources. Typecheck and lint passed. Embedded-JS Android APK
 rebuilt successfully (12 s), installed over the existing emulator app and launched.
 The earlier APK hash above identifies the prior Russian UI build only.
+
+## Sensor implementation stage 2 — local storage (2026-10-19)
+
+The existing Android model remains logical schema v1 / SQLCipher database v3.
+No dependency or schema change is required for this increment. Native `Journal`
+continues to own database access; `latest`, export and close now enforce its writer
+thread guard too. The inventory and verification report is
+[stage-2/local-storage-verification.ru.md](../../docs/stage-2/local-storage-verification.ru.md).
+
+A failed pause/resume/finish now stops the session engine in `interrupted` state.
+Retrying finish commits an interruption at the available prefix instead of extending
+the last segment to the later retry time. It returns `state: interrupted` only after
+commit; JS validates terminal save acknowledgments and reports the available portion.
+Retry failures retain the session ID, and repeated successful saves are idempotent.
+A failed new start clears the prior save acknowledgment, so finish cannot accidentally
+return an earlier session. Existing completed recordings remain in history.
+
+`recorded_active_ms` is the recorder's historical checkpoint; it may exceed the
+confirmed duration after an interruption. Use `details.summary.active_duration_ms`
+with its method/parameters for summaries, and show unavailable metrics explicitly.
+Recalculations preserve pauses, HR/GPS gaps and the unknown interrupted tail.
+
+New `StorageFailureRecoveryTest` checks late save/recovery retries, raw-prefix SHA-256,
+reopen in another timebase, actual SQLCipher `SQLiteFullException` using a page-count
+limit, rollback and preservation of another session. All test stores are isolated.
+This does not fill the phone filesystem, simulate power loss or validate physical
+screen-lock/Keystore access. iOS storage remains unimplemented; stage 2 for both
+platforms and stage 0 hardware acceptance remain open.
+
+Stage 2 verification: TypeScript/ESLint passed; JS 49/49; Kotlin JVM 40/40
+(including local private fixtures); Android instrumentation 51 passed and 1 expected
+external-probe skip; the external prepare/force-stop/verify probe then passed 1/1.
+Debug/test APKs and native lint passed. Embedded-JS release built and passed APK
+inspection, installed with `adb install -r`, and cold-launched on the dedicated
+Android 14 emulator without Metro. Results/logs: `artifacts/stage2-local-storage/`.
+APK SHA-256: `07d2507c9831929d8e8e8a4378df85085f1e095b600057a2ce20e56782581dac`.
+No physical phone was connected. Next: current-build hardware validation and iOS
+technical foundation, followed by stage 3 recorder behavior.

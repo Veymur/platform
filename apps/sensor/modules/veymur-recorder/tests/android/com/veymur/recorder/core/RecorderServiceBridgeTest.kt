@@ -140,7 +140,10 @@ class RecorderServiceBridgeTest {
             state = command(service, "getSnapshot").getOrThrow()
             assertEquals(id, state["sessionId"]); assertEquals("interrupted", state["sessionState"]); assertEquals("STORAGE_ERROR", state["errorCode"])
             writer(service) { db.execSQL("DROP TRIGGER reject_finish") }
-            assertEquals(id, command(service, "finish").getOrThrow()["sessionId"])
+            val saved = command(service, "finish").getOrThrow()
+            assertEquals(id, saved["sessionId"]); assertEquals("interrupted", saved["state"])
+            assertNull(command(service, "getSnapshot").getOrThrow()["sessionId"])
+            assertEquals("interrupted", command(service, "getSnapshot").getOrThrow()["sessionState"])
         } finally { command(service, "finish"); unbind(binding) }
     }
     @Test fun routeDeniedStillStartsHrOnlyWithCorrectForegroundType() {

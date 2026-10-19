@@ -16,7 +16,7 @@ async function fixture() {
     search: async () => { calls.push('search'); }, cancelSearch: async () => { calls.push('cancelSearch'); }, connect: async id => { calls.push(['connect', id]); },
     start: async options => { calls.push(['start', options.routeRequested]); }, pause: async () => { calls.push('pause'); }, resume: async () => { calls.push('resume'); },
     startDiagnostic: async () => { calls.push('startDiagnostic'); }, stopDiagnostic: async () => { calls.push('stopDiagnostic'); },
-    finish: async () => { calls.push('finish'); }, exportLatest: async () => { calls.push('export'); return { uri: 'content://test/exports/file.zip' }; },
+    finish: async () => { calls.push('finish'); return { sessionId: 'saved', state: 'completed' }; }, exportLatest: async () => { calls.push('export'); return { uri: 'content://test/exports/file.zip' }; },
     shareExport: async uri => { calls.push(['share', uri]); } };
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/recorder/RecorderController.ts'), 'utf8'), {
@@ -116,4 +116,15 @@ test('capture deletion confirms identity, refreshes list, preserves errors and c
   let confirm; f.permissions.confirmDeleteDiagnostic = () => new Promise(resolve => { confirm = resolve; });
   const deleting = f.controller.deleteDiagnostic(); await flush(); const count = f.calls.length;
   f.off(); confirm(true); await deleting; assert.equal(f.calls.length, count);
+});
+
+test('saving an interrupted recording reports the available portion only after acknowledgment', async () => {
+  const f = await fixture(); let acknowledge;
+  f.client.finish = () => new Promise(resolve => { acknowledge = resolve; });
+  const pending = f.controller.finish(); await flush();
+  assert.equal(f.view().message, null);
+  acknowledge({ sessionId: 'saved', state: 'interrupted' }); await pending;
+  assert.match(f.view().message, /Available portion saved/);
+  assert.match(f.view().message, /uncommitted tail is unknown/);
+  assert.equal(f.view().error, null);
 });

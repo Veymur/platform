@@ -59,28 +59,50 @@ class RecorderSessionTest {
         db.execSQL("DROP TRIGGER reject_configuration")
         assertNotNull(session.start("SYNTHETIC", false, JSONObject()))
     }
+    @Test fun failedNewStartCannotReturnPreviousSessionAsSaved() = fixture { journal, db ->
+        val session = RecorderSession(journal, RecordingClock { 100L })
+        val previous = session.start("SYNTHETIC", false, JSONObject())
+        session.finish(50)
+        db.execSQL("CREATE TRIGGER reject_start BEFORE INSERT ON sessions BEGIN SELECT RAISE(ABORT, 'injected start failure'); END")
+        assertThrows(Exception::class.java) { session.start("SYNTHETIC", false, JSONObject()) }
+        assertNull(session.id)
+        assertThrows(RecorderError::class.java) { session.finish(50) }
+        assertEquals(1, count(db, "SELECT count(*) FROM sessions WHERE state='completed'"))
+        assertEquals(previous, journal.latest())
+    }
     @Test fun failedFinishDoesNotReportCompletedOrPersistFinishEventAndCanRetry() = fixture { journal, db ->
         val session = RecorderSession(journal, RecordingClock { 100L })
         val id = session.start("SYNTHETIC", false, JSONObject())
         db.execSQL("CREATE TRIGGER reject_finish BEFORE UPDATE ON sessions WHEN NEW.state='completed' BEGIN SELECT RAISE(ABORT, 'injected finish failure'); END")
         assertThrows(Exception::class.java) { session.finish(50) }
-        assertEquals(id, session.id); assertEquals("recording", session.state)
+        assertEquals(id, session.id); assertEquals("interrupted", session.state)
         assertEquals(0, count(db, "SELECT count(*) FROM records WHERE kind='finish'"))
         assertEquals(0, count(db, "SELECT count(*) FROM sessions WHERE state='completed'"))
         session.failed(); assertEquals("interrupted", session.state)
         db.execSQL("DROP TRIGGER reject_finish")
-        assertEquals(id, session.finish(50)); assertEquals("completed", session.state)
-        assertEquals(1, count(db, "SELECT count(*) FROM records WHERE kind='finish'"))
+        assertEquals(id, session.finish(50)); assertEquals("interrupted", session.state)
+        assertEquals(id, session.finish(50)); assertNull(session.id)
+        assertEquals(0, count(db, "SELECT count(*) FROM records WHERE kind='finish'"))
+        assertEquals(1, count(db, "SELECT count(*) FROM records WHERE kind='interrupted'"))
     }
-    @Test fun failedPauseAndResumeDoNotCommitHalfTransitions() = fixture { journal, db ->
+    @Test fun failedPauseDoesNotCommitHalfTransitionAndRequiresSavingAvailablePortion() = fixture { journal, db ->
         val session = RecorderSession(journal, RecordingClock { 100L })
-        session.start("SYNTHETIC", false, JSONObject())
+        val id = session.start("SYNTHETIC", false, JSONObject())
         db.execSQL("CREATE TRIGGER reject_transition BEFORE UPDATE ON sessions BEGIN SELECT RAISE(ABORT, 'injected state failure'); END")
         assertThrows(Exception::class.java) { session.pause() }
-        assertEquals("recording", session.state); assertEquals(0, count(db, "SELECT count(*) FROM records WHERE kind='pause'"))
-        db.execSQL("DROP TRIGGER reject_transition"); session.pause()
+        assertEquals("interrupted", session.state); assertEquals(0, count(db, "SELECT count(*) FROM records WHERE kind='pause'"))
+        assertThrows(RecorderError::class.java) { session.resume() }
+        db.execSQL("DROP TRIGGER reject_transition")
+        assertEquals(id, session.finish(50)); assertEquals("interrupted", session.state)
+        assertEquals(1, count(db, "SELECT count(*) FROM records WHERE kind='interrupted'"))
+    }
+    @Test fun failedResumeDoesNotOpenSegmentAndRequiresSavingAvailablePortion() = fixture { journal, db ->
+        val session = RecorderSession(journal, RecordingClock { 100L })
+        session.start("SYNTHETIC", false, JSONObject()); session.pause()
         db.execSQL("CREATE TRIGGER reject_resume BEFORE UPDATE ON sessions WHEN NEW.state='recording' BEGIN SELECT RAISE(ABORT, 'injected resume failure'); END")
         assertThrows(Exception::class.java) { session.resume() }
-        assertEquals("paused", session.state); assertEquals(0, count(db, "SELECT count(*) FROM records WHERE kind='resume'"))
+        assertEquals("interrupted", session.state); assertEquals(0, count(db, "SELECT count(*) FROM records WHERE kind='resume'"))
+        db.execSQL("DROP TRIGGER reject_resume"); session.finish(50)
+        assertEquals(1, count(db, "SELECT count(*) FROM segments"))
     }
 }

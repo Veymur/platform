@@ -85,3 +85,14 @@ test('capture list is bounded and decoded; export/delete preserve IDs and diagno
   captures = [{ ...capture, savedEvents: -1 }]; await assert.rejects(client.listDiagnosticCaptures(), error => error.code === 'INCOMPATIBLE_BINARY');
   captures = Array(101).fill(capture); await assert.rejects(client.listDiagnosticCaptures(), error => error.code === 'INCOMPATIBLE_BINARY');
 });
+
+test('finish accepts only terminal save acknowledgments and omits native internals', async () => {
+  const { RecorderClient } = load();
+  for (const state of ['completed', 'interrupted']) {
+    const result = await new RecorderClient(() => ({ finish: async () => ({ sessionId: 'saved', state, secret: 'private' }) })).finish();
+    assert.equal(result.sessionId, 'saved'); assert.equal(result.state, state); assert.equal('secret' in result, false);
+  }
+  for (const result of [null, {}, { sessionId: '', state: 'completed' }, { sessionId: 'saved', state: 'finishing' }, { sessionId: 'saved', state: 'recording' }]) {
+    await assert.rejects(new RecorderClient(() => ({ finish: async () => result })).finish(), e => e.code === 'INCOMPATIBLE_BINARY');
+  }
+});

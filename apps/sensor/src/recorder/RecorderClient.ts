@@ -96,7 +96,14 @@ export class RecorderClient {
   async deleteDiagnostic(id: string) { return this.call(n => n.deleteDiagnostic(id)); }
   async pause() { return this.call(n => n.pause()); }
   async resume() { return this.call(n => n.resume()); }
-  async finish() { return this.call(n => n.finish()); }
+  async finish() {
+    const result = await this.call(n => n.finish());
+    if (!result || typeof result.sessionId !== 'string' || result.sessionId.length === 0 ||
+        (result.state !== 'completed' && result.state !== 'interrupted')) {
+      throw new RecorderClientError('INCOMPATIBLE_BINARY', 'Invalid save acknowledgment; refresh the recorder or rebuild the app.');
+    }
+    return { sessionId: result.sessionId, state: result.state };
+  }
   async exportLatest() { return this.call(n => n.exportLatest()); }
   async shareExport(uri: string) { return this.call(n => n.shareExport(uri)); }
 }

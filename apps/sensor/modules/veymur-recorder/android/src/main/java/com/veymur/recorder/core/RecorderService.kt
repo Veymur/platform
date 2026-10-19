@@ -268,7 +268,7 @@ class RecorderService : Service() {
         if (hadSession) { snapshot = snapshot.copy(status = "Saving recording…"); publish() }
         val id = try { control.finish(phoneBattery(), message) } catch (e: Exception) { finishing = false; throw e }
         main.post { stopResources(); finishing = false }
-        return mapOf("sessionId" to id, "state" to "completed")
+        return mapOf("sessionId" to id, "state" to engine!!.state)
     }
     fun execute(name: String, argument: String? = null, route: Boolean = false, done: (Result<Map<String, Any?>>) -> Unit) {
         val command = if (name in setOf("start", "pause", "resume", "finish")) polarInputs.command(name, route) else null

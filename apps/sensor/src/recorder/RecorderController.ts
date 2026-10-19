@@ -142,8 +142,10 @@ export class RecorderController {
   finish = () => this.run('Finish', async current => {
     await this.client.ensureActivity();
     if (!await this.permissions.confirmFinish() || !current()) return;
-    await this.client.finish();
-    if (current()) this.update({ message: 'Recording saved on this phone.' });
+    const result = await this.client.finish();
+    if (current()) this.update({ message: result.state === 'interrupted'
+      ? 'Available portion saved on this phone. Recording was interrupted; the uncommitted tail is unknown.'
+      : 'Recording saved on this phone.' });
   });
   exportLatest = () => this.run('Export', async current => {
     const file = await this.client.exportLatest();

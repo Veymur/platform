@@ -70,13 +70,13 @@ class RecorderServiceBridgeTest {
         }
         instrumentation.runOnMainSync { host.startActivity(host.packageManager.getLaunchIntentForPackage(host.packageName)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         instrumentation.waitForIdleSync(); SystemClock.sleep(500)
-        writer(service) { field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, lastHrElapsed = SystemClock.elapsedRealtime() - 6000, lastHrElapsedNs = SystemClock.elapsedRealtimeNanos() - 6_000_000_000)) }
+        writer(service) { field(service, "selected").set(service, "SYNTHETIC"); field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, lastHrElapsed = SystemClock.elapsedRealtime() - 6000, lastHrElapsedNs = SystemClock.elapsedRealtimeNanos() - 6_000_000_000)) }
     }
     @Test fun snapshotsRevisionsStalenessReadinessMissingActivityAndStoppedServiceErrors() {
         val binding = bind(); val service = binding.service
         try {
             isolated(service)
-            writer(service) { field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, battery = 50, lastHrElapsed = SystemClock.elapsedRealtime() - 6000, lastHrElapsedNs = SystemClock.elapsedRealtimeNanos() - 6_000_000_000)) }
+            writer(service) { field(service, "selected").set(service, "SYNTHETIC"); field(service, "snapshot").set(service, service.snapshot.copy(connected = "SYNTHETIC", hr = 82, battery = 50, lastHrElapsed = SystemClock.elapsedRealtime() - 6000, lastHrElapsedNs = SystemClock.elapsedRealtimeNanos() - 6_000_000_000)) }
             val first = command(service, "getSnapshot").getOrThrow()
             assertNull(first["hr"]); assertEquals("stale", first["hrStatus"]); assertTrue((first["hrAgeMs"] as Long) >= 6000)
             assertEquals(50, first["batteryPercent"])
@@ -172,6 +172,7 @@ class RecorderServiceBridgeTest {
             val other = PolarDeviceInfo("OTHER", "00:00:00:00:00:00", -90, "Other sensor", true)
             val unavailable = other.copy(deviceId = "UNAVAILABLE", name = "Sense", isConnectable = false)
             val eligible = other.copy(deviceId = "SYNTHETIC", name = "Sense", rssi = -60)
+            writer(service) { field(service, "activeSearchId").set(service, "search-test") }
             search.result("search-test", other); search.result("search-test", unavailable)
             search.result("search-test", eligible); search.result("search-test", eligible.copy(rssi = -40))
             fun hr(bpm: Int) = callbacks.hrNotificationReceived("SYNTHETIC",
@@ -217,6 +218,7 @@ class RecorderServiceBridgeTest {
             isolated(service)
             val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
             val input = field(service, "polarInputs").get(service) as PolarInputBoundary
+            writer(service) { field(service, "selected").set(service, "SYNTHETIC") }
             val sink = PolarInputBoundaryTest.Sink("synthetic-delayed"); input.setSink(sink)
             val blocked = CountDownLatch(1)
             (field(service, "worker").get(service) as Handler).post { blocked.countDown(); release.await(10, TimeUnit.SECONDS) }
@@ -444,4 +446,126 @@ class RecorderServiceBridgeTest {
             assertEquals(true, command(service, "localData", argument = """{"operation":"delete","id":"$id"}""").getOrThrow()["data_deleted"])
         } finally { command(service, "finish"); unbind(binding) }
     }
+    @Test fun otherSensorCallbacksAndDisconnectedHrCannotMutateSelectedRecording() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); foreground(service)
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            command(service, "start").getOrThrow()
+            callbacks.hrNotificationReceived("OTHER", PolarHrData.PolarHrSample(200, 0, 0, emptyList(), emptyList(), false, true, true))
+            callbacks.batteryLevelReceived("OTHER", 99)
+            callbacks.deviceConnected(PolarDeviceInfo("OTHER", "00:00:00:00:00:00", -50, "Sense", true))
+            @Suppress("DEPRECATION")
+            callbacks.deviceDisconnected(PolarDeviceInfo("OTHER", "00:00:00:00:00:00", -50, "Sense", true))
+            var state = command(service, "getSnapshot").getOrThrow()
+            assertEquals("SYNTHETIC", state["connectedDeviceId"]); assertEquals(0, state["hrCount"])
+            callbacks.batteryLevelReceived("SYNTHETIC", -1)
+            assertNull(command(service, "getSnapshot").getOrThrow()["batteryPercent"])
+            @Suppress("DEPRECATION")
+            callbacks.deviceDisconnected(PolarDeviceInfo("SYNTHETIC", "00:00:00:00:00:00", -50, "Sense", true))
+            callbacks.hrNotificationReceived("SYNTHETIC", PolarHrData.PolarHrSample(100, 0, 0, emptyList(), emptyList(), false, true, true))
+            state = command(service, "getSnapshot").getOrThrow()
+            assertNull(state["hr"]); assertEquals(0, state["hrCount"]); assertEquals("recording", state["sessionState"])
+            assertEquals("SYNTHETIC", state["selectedDeviceId"])
+        } finally { command(service, "finish"); unbind(binding) }
+    }
+    @Test fun cancelledAndReplacedDiscoveryCannotApplyLateResultsOrErrors() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service)
+            val search = field(service, "polarSearch").get(service) as PolarSearchInput
+            writer(service) { field(service, "activeSearchId").set(service, "old") }
+            command(service, "cancelSearch").getOrThrow()
+            search.result("old", PolarDeviceInfo("OLD", "00:00:00:00:00:00", -50, "Sense", true))
+            search.error("old", IllegalStateException("late"))
+            var state = command(service, "getSnapshot").getOrThrow()
+            assertEquals(false, state["discoveryActive"]); assertTrue((state["devices"] as List<*>).isEmpty()); assertNull(state["errorCode"])
+            writer(service) { field(service, "activeSearchId").set(service, "new") }
+            search.result("old", PolarDeviceInfo("OLD", "00:00:00:00:00:00", -50, "Sense", true))
+            search.result("new", PolarDeviceInfo("NEW", "00:00:00:00:00:00", -50, "Sense", true))
+            state = command(service, "getSnapshot").getOrThrow()
+            assertEquals(1, (state["devices"] as List<*>).size)
+            assertEquals("NEW", service.snapshot.devices.single().deviceId)
+            search.completed("new")
+            assertEquals(false, command(service, "getSnapshot").getOrThrow()["discoveryActive"])
+        } finally { unbind(binding) }
+    }
+    @Test fun gpsLossIsRecordedOnceWhileHrAndPauseRemainAvailable() {
+        val binding = bind(); val service = binding.service
+        try {
+            val db = isolated(service); foreground(service); command(service, "start").getOrThrow()
+            writer(service) {
+                field(service, "routeEnabled").set(service, true)
+                field(service, "gpsExpectedSinceNs").set(service, SystemClock.elapsedRealtimeNanos() - 20_000_000_000L)
+                val check = RecorderService::class.java.getDeclaredMethod("checkGpsAvailability").apply { isAccessible = true }
+                repeat(3) { check.invoke(service) }
+                db.rawQuery("SELECT count(*) FROM records WHERE kind='gps_unavailable'", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+            }
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            callbacks.hrNotificationReceived("SYNTHETIC", PolarHrData.PolarHrSample(85, 0, 0, emptyList(), emptyList(), false, true, true))
+            var state = command(service, "getSnapshot").getOrThrow()
+            assertEquals("recording", state["sessionState"]); assertEquals(1, state["hrCount"])
+            assertTrue((state["gpsStatus"] as String).contains("heart rate recording continues"))
+            command(service, "pause").getOrThrow()
+            state = command(service, "getSnapshot").getOrThrow(); assertEquals("paused", state["sessionState"])
+        } finally { command(service, "finish"); unbind(binding) }
+    }
+    @Test fun selectedQuietRangeSettingsUseNativeSessionAndRespectNotificationPermission() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); foreground(service)
+            writer(service) {
+                val j = field(service, "journal").get(service) as Journal
+                val saved = LocalValidationFixture.op(j, "saveRanges", "expected_revision" to 0,
+                    "value" to org.json.JSONObject("""{"ranges":[{"id":"custom","label":"Custom range","lower_bpm_inclusive":90,"upper_bpm_exclusive":110}]}"""))["hr_ranges"] as Map<*, *>
+                LocalValidationFixture.op(j, "saveSettings", "expected_revision" to 0,
+                    "value" to org.json.JSONObject("""{"units":"metric","timezone_id":"UTC","theme":"system","route_enabled":false,"hr_ranges_id":"${saved["id"]}","alerts":{"enabled":true,"sound":false,"vibration":false,"debounce_ms":2000,"hysteresis_bpm":3,"repeat_ms":null}}"""))
+            }
+            command(service, "start").getOrThrow()
+            val state = command(service, "getSnapshot").getOrThrow()
+            assertTrue(state["alertsStatus"] in setOf("enabled", "notification_permission_denied", "notifications_disabled"))
+            val manager = host.getSystemService(android.app.NotificationManager::class.java)
+            val channel = manager.getNotificationChannel("range-quiet-still-v1")
+            assertNotNull(channel); assertNull(channel.sound); assertFalse(channel.shouldVibrate()); assertFalse(channel.canBypassDnd())
+            var disabledRequest = ""
+            writer(service) {
+                val j = field(service, "journal").get(service) as Journal
+                val settings = LocalValidationFixture.op(j, "preferences")["settings"] as Map<*, *>
+                val value = org.json.JSONObject(settings)
+                listOf("id", "schema_version", "local_profile_id", "installation_id", "revision").forEach { value.remove(it) }
+                value.getJSONObject("alerts").put("enabled", false)
+                disabledRequest = org.json.JSONObject().put("operation", "saveSettings").put("expected_revision", 1).put("value", value).toString()
+            }
+            command(service, "localData", argument = disabledRequest).getOrThrow()
+            assertEquals("disabled", command(service, "getSnapshot").getOrThrow()["alertsStatus"])
+            command(service, "pause").getOrThrow()
+            command(service, "finish").getOrThrow()
+            assertTrue(manager.activeNotifications.none { it.id == 2 })
+        } finally { command(service, "finish"); unbind(binding) }
+    }
+    @Test fun callbacksAfterStorageFailureCannotMoveRecoveryCutoffAndFutureHrIsNotFresh() {
+        val binding = bind(); val service = binding.service
+        try {
+            val db = isolated(service); foreground(service); command(service, "start").getOrThrow()
+            writer(service) {
+                field(service, "snapshot").set(service, service.snapshot.copy(hr = 80, lastHrElapsedNs = SystemClock.elapsedRealtimeNanos() + 10_000_000_000L))
+            }
+            assertNull(command(service, "getSnapshot").getOrThrow()["hr"])
+            writer(service) { db.execSQL("CREATE TRIGGER fail_finish BEFORE UPDATE ON sessions WHEN NEW.state='completed' BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+            assertTrue(command(service, "finish").isFailure)
+            var before = 0L
+            writer(service) { db.rawQuery("SELECT count(*) FROM records", null).use { it.moveToFirst(); before = it.getLong(0) } }
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            callbacks.batteryLevelReceived("SYNTHETIC", 50)
+            @Suppress("DEPRECATION")
+            callbacks.deviceDisconnected(PolarDeviceInfo("SYNTHETIC", "00:00:00:00:00:00", -50, "Sense", true))
+            command(service, "getSnapshot").getOrThrow()
+            writer(service) {
+                db.rawQuery("SELECT count(*) FROM records", null).use { it.moveToFirst(); assertEquals(before, it.getLong(0)) }
+                db.execSQL("DROP TRIGGER fail_finish")
+            }
+            assertEquals("interrupted", command(service, "finish").getOrThrow()["state"])
+        } finally { command(service, "finish"); unbind(binding) }
+    }
+
 }

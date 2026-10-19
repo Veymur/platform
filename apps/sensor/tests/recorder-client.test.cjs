@@ -12,7 +12,7 @@ function load() {
     { exports, require: () => ({ getModuleInfo: async () => ({}), nativeRecorder: () => { throw new Error('Native fixture missing'); } }) });
   return exports;
 }
-const dto = (revision = 1) => ({ revision, ready: true, status: 'Ready', sessionId: null, sessionState: 'preparation',
+const dto = (revision = 1) => ({ revision, selectedDeviceId: null, discoveryActive: false, alertsStatus: 'disabled', storageWarning: null, ready: true, status: 'Ready', sessionId: null, sessionState: 'preparation',
   connectedDeviceId: null, batteryPercent: null, hr: null, hrAgeMs: null, hrStatus: 'missing', devices: [],
   hrCount: 0, gpsCount: 0, activeMs: 0, lastCommitUtcMs: null, gpsStatus: 'Route disabled', routeEnabled: false, recoveredCount: 0, errorCode: null, diagnostic: { captureId: null, state: 'off', savedEvents: 0, savedProcessing: 0, knownLostEvents: 0, knownLostProcessing: 0, unknownTail: false, checkpointPersisted: true, lastErrorCode: null } });
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -94,5 +94,16 @@ test('finish accepts only terminal save acknowledgments and omits native interna
   }
   for (const result of [null, {}, { sessionId: '', state: 'completed' }, { sessionId: 'saved', state: 'finishing' }, { sessionId: 'saved', state: 'recording' }]) {
     await assert.rejects(new RecorderClient(() => ({ finish: async () => result })).finish(), e => e.code === 'INCOMPATIBLE_BINARY');
+  }
+});
+
+test('stage 3 snapshot requires native discovery, selection, alert and storage facts', () => {
+  const { decodeSnapshot } = load();
+  const good = { ...dto(), selectedDeviceId: 'chosen', discoveryActive: true, alertsStatus: 'notification_permission_denied', storageWarning: 'low_space' };
+  const value = decodeSnapshot(good);
+  assert.equal(value.selectedDeviceId, 'chosen'); assert.equal(value.discoveryActive, true);
+  assert.equal(value.alertsStatus, 'notification_permission_denied'); assert.equal(value.storageWarning, 'low_space');
+  for (const patch of [{ discoveryActive: undefined }, { selectedDeviceId: undefined }, { alertsStatus: 'safe_zone' }, { storageWarning: 'enough_space' }]) {
+    assert.throws(() => decodeSnapshot({ ...good, ...patch }), e => e.code === 'INCOMPATIBLE_BINARY');
   }
 });

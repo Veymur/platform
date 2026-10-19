@@ -90,7 +90,7 @@ adb -s emulator-5554 shell am start -W -a android.intent.action.VIEW \
 adb -s emulator-5554 logcat -d -s ReactNativeJS:I '*:S'
 ```
 
-The current screen is “Veymur · recording validation”: storage becomes ready, and a disconnected sensor shows “No current heart rate”. The typed handshake requires contractVersion=6/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
+The current screen is “Veymur · recording validation”: storage becomes ready, and a disconnected sensor shows “No current heart rate”. The typed handshake requires contractVersion=7/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
 
 An incompatible native binary produces a rebuild/reinstall error. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, registration, permissions or plugin/config changes require prebuild and a new installation. JS reload updates only JS. This **debug development APK** uses Metro; it supports the JS reload scenarios. It is separate from the autonomous diagnostic variant below.
 
@@ -205,7 +205,7 @@ Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings
 
 ### Local history API
 
-`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v6; no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history screens, CSV/GPX, and deletion confirmation UI remain separate work. See [local operations contract and verification](../../docs/local-data-operations.md).
+`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v7 (local operations were introduced in v6); no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history screens, CSV/GPX, and deletion confirmation UI remain separate work. See [local operations contract and verification](../../docs/local-data-operations.md).
 
 ### Local data verification
 
@@ -288,3 +288,41 @@ Android 14 emulator without Metro. Results/logs: `artifacts/stage2-local-storage
 APK SHA-256: `07d2507c9831929d8e8e8a4378df85085f1e095b600057a2ce20e56782581dac`.
 No physical phone was connected. Next: current-build hardware validation and iOS
 technical foundation, followed by stage 3 recorder behavior.
+
+## Sensor implementation stage 3 — Android recorder behavior (2026-10-19)
+
+Bridge **v7** adds `selectedDeviceId`, `discoveryActive`, `alertsStatus` and
+`storageWarning`. Rebuild/reinstall older v6 binaries; SQL schema and dependencies
+are unchanged. Search cancellation/replacement rejects late callbacks; only the
+explicitly selected sensor can update recording state. A disconnected selected
+sensor can be reconnected during a session without switching its owner/device.
+Unknown battery stays null. GPS silence/permission loss is separate from HR, and
+callbacks after storage failure cannot extend the recovery cutoff.
+
+Native `RangeAlerts` consumes fresh HR only while recording the current segment.
+User-authored ranges and debounce/hysteresis/repeat settings come from the existing
+local preferences API. Alerts default off. Ranges/rules are captured on start;
+disabling alerts and changing delivery/quiet mode apply immediately after saving.
+The native tick owns evaluation; no JS timer, account or network is involved.
+A 5-second technical cooldown survives brief gaps. Android notification channels
+provide sound/vibration/visual-only output with secret lock-screen visibility,
+without DND bypass; OS/user controls and notification permission take precedence.
+The diagnostic UI reports blocked notifications, discovery, low space and reconnect.
+The range/settings editor belongs to stage 4; this increment exposes native behavior
+through the existing local settings API rather than prescribing example HR zones.
+
+The GPS-silence threshold (10 s), low-space warning (50 MiB), existing critical
+finish reserve (20 MiB), 5 s HR staleness and alert cooldown are provisional test
+policies, not phone-validated product guarantees. Stage 3 for both platforms remains
+open: Swift/iOS, actual BLE/GPS, background/locking, notification delivery/DND and
+battery measurements require hardware validation. See the implementation inventory,
+commands, sources and results in [the stage 3 report](../../docs/stage-3/native-recorder-verification.ru.md).
+
+Stage 3 results: TypeScript and ESLint passed; JS 50/50; Kotlin JVM 46/46;
+Android instrumentation 56 passed with 1 expected external-probe skip; Polar replay
+8/8; external prepare/force-stop/verify 1/1. Native builds/lint and embedded-JS APK
+inspection passed. The release APK was installed over the previous emulator version
+and diagnostics opened without Metro: storage ready, alerts disabled, no current HR.
+APK SHA-256: `ff894913640a39ba16ee162c789a54cbe3272a555132c98d70d1aea54276d203`.
+Local logs/results/UI dumps: `artifacts/stage3-native-recorder/`.
+Physical-phone and iOS validation remain NOT RUN; the full stage is not marked done.

@@ -93,8 +93,9 @@ class PolarReplayTest {
         assertEquals(first.outcomes, second.outcomes)
         assertEquals(first.observations, second.observations)
         assertEquals(21, first.outcomes.size)
-        assertEquals(10, first.outcomes.count { it.endsWith(":applied") })
-        assertEquals(11, first.outcomes.count { it.endsWith(":ignored") })
+        // Normal discovery completion now publishes the terminal discovery status.
+        assertEquals(11, first.outcomes.count { it.endsWith(":applied") })
+        assertEquals(10, first.outcomes.count { it.endsWith(":ignored") })
         assertTrue(first.records.isEmpty()) // No start command in this fixture.
         assertEquals(0, first.snapshot.hrCount)
         assertNull(first.snapshot.hr)

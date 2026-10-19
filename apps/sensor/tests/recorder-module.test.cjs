@@ -39,7 +39,7 @@ function wrapper(platform, nativeInfo) {
 const info = {
   moduleName: "VeymurRecorder",
   platform: "android",
-  contractVersion: 6,
+  contractVersion: 7,
   recorderImplemented: true,
 };
 
@@ -59,7 +59,7 @@ test("Android returns a valid typed handshake, with recording commands available
 });
 
 test("an incompatible installed native binary requires rebuilding", async () => {
-  const { client } = wrapper("android", { ...info, contractVersion: 2 });
+  const { client } = wrapper("android", { ...info, contractVersion: 6 });
   await assert.rejects(client.getModuleInfo(), /Rebuild and install/);
 });
 

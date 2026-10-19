@@ -1,5 +1,5 @@
 export type RecorderModuleInfo = {
-  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 6; recorderImplemented: true;
+  moduleName: 'VeymurRecorder'; platform: 'android'; contractVersion: 7; recorderImplemented: true;
 };
 export type RecorderErrorCode = 'UNSUPPORTED_PLATFORM' | 'INCOMPATIBLE_BINARY' | 'SERVICE_UNAVAILABLE' |
   'NOT_READY' | 'NO_ACTIVITY' | 'PERMISSION_DENIED' | 'INVALID_STATE' | 'INVALID_ARGUMENT' |
@@ -12,6 +12,9 @@ export type DiagnosticStatus = {
 };
 export type RecorderSnapshot = {
   diagnostic: DiagnosticStatus;
+  selectedDeviceId: string | null; discoveryActive: boolean;
+  alertsStatus: 'disabled' | 'enabled' | 'no_selected_ranges' | 'notification_permission_denied' | 'notifications_disabled';
+  storageWarning: 'low_space' | null;
   revision: number; ready: boolean; status: string;
   sessionId: string | null; sessionState: SessionState;
   connectedDeviceId: string | null; batteryPercent: number | null;

@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application>
         <meta-data android:name="com.veymur.recorder.CORE_VERSION" android:value="stage0-777a33b-polar-replay-d7" />
         <service android:name="com.veymur.recorder.core.RecorderService" android:exported="false" android:foregroundServiceType="connectedDevice|location" />

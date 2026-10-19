@@ -1,0 +1,14 @@
+**/node_modules/**
+**/android/**
+**/ios/**
+**/build/**
+**/.gradle/**
+**/.expo/**
+**/dist/**
+**/coverage/**
+artifacts/**
+diagnostic-exports/**
+docs/**
+**/diagnostics/fixtures/**
+**/tests/fixtures/**
+**/*lock.json

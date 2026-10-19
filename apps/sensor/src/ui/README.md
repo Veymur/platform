@@ -1,15 +1,16 @@
 # Sensor UI foundation — stage 1, first increment
 
 Palette, spacing and radii come from `design/markup-design/assets/css/tokens.css`.
-`ThemeProvider` supports system/light/dark; manual choice is held in memory only.
+`ThemeProvider` supports system/light/dark; since stage 4 the choice is persisted in native local settings.
 Text uses the system font with default font scaling. No animation is used, including
 modal transitions, so this increment does not require a reduced-motion subscription.
 Controls have minimum 48 dp targets; tabs wrap and text has no fixed line limit.
 Selection includes a text mark and accessibility state; status always includes text.
 
-`components.tsx` provides Label, Heading, Card, Action, Toggle, Status and Dialog.
-`SensorApp.tsx` provides recording/history/profile navigation and access to the
-existing diagnostic screen. History is explicitly unconnected, not an empty database.
+`components.tsx` provides Label, Heading, Card, Action, Toggle, Status, Dialog, Choice,
+Detail, Warning, NumberField and TextField. `HrColumns.tsx` draws a gap-aware column chart
+from plain Views. `SensorApp.tsx` hosts the stage 4 product screens (see the app README);
+the diagnostic screen stays reachable from Profile.
 No sample HR, GPS, cloud connection or fabricated recordings are shown.
 The recorder remains native; opening or closing UI does not issue stop commands.
 The existing diagnostic screen retains its own appearance and English text.

@@ -2,7 +2,6 @@
 
 Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=6/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, start/pause/resume/confirmed finish, session ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder/recorder-bridge-contract.md).
 
-
 Polar diagnostic stages D1–D2 now add explicit immutable SDK input events before recorder processing, separate receipt/worker timing, all 16 base callback signatures and unfiltered discovery results. D3 provides the native encrypted journal and D4 adds explicit capture controls; D5 adds capture export and deletion: the current Export last session button still produces the existing session ZIP. The native test sink is disabled by default. See the [input contract](../../docs/diagnostic/polar-diagnostic-contract.md) and [implementation checks](../../docs/diagnostic/polar-diagnostic-implementation.md). Rebuild native after these changes; existing stage-8 APKs do not contain this boundary.
 
 D3 adds `DiagnosticJournal`/`DiagnosticCapture` with a separate SQLCipher database, Keystore wrapping key and writer thread, bounded non-blocking offers, atomic checkpoints, explicit losses/limits, interrupted recovery and native deletion. Capture remains off until explicitly enabled. D4 exposes `startDiagnostic`/`stopDiagnostic` and a compact status through bridge v5; JS never receives raw callbacks. Capture owns the foreground service even without a session. Finish keeps capture active; stopping capture leaves a session active. Stop acknowledges the drained, committed queue or returns `DIAGNOSTIC_ERROR`. Capture does not start discovery or initialize Polar. Reopening detects interrupted captures without resuming them. See [D4 checks and limits](../../docs/diagnostic/polar-diagnostic-d4-implementation.md). The provisional 64-record/250-ms commit policy has emulator measurements; Galaxy A23 measurements remain pending. See [D3 behavior, commands, measurements and limitations](../../docs/diagnostic/polar-diagnostic-d3-implementation.md).
@@ -31,11 +30,11 @@ D6 verifies fixture preparation; the native replay engine and its expected-resul
 
 The Stage 0 recorder and stage 2 dependency probe remain separately installed/testable:
 
-| App | Android applicationId |
-|---|---|
-| Kotlin recorder | `com.veymur.stage0` |
+| App              | Android applicationId           |
+| ---------------- | ------------------------------- |
+| Kotlin recorder  | `com.veymur.stage0`             |
 | Dependency probe | `com.veymur.sensor.bridgeprobe` |
-| This RN app | `com.veymur.sensor` |
+| This RN app      | `com.veymur.sensor`             |
 
 Their databases, preferences and Keystore scopes are separate. No automatic data migration or ZIP import is included.
 
@@ -326,3 +325,52 @@ and diagnostics opened without Metro: storage ready, alerts disabled, no current
 APK SHA-256: `ff894913640a39ba16ee162c789a54cbe3272a555132c98d70d1aea54276d203`.
 Local logs/results/UI dumps: `artifacts/stage3-native-recorder/`.
 Physical-phone and iOS validation remain NOT RUN; the full stage is not marked done.
+
+## Sensor implementation stage 4 — local user flow, step 1 of 3 (2026-10-19)
+
+Product screens replace the stage 1 placeholder and use bridge v7 and the existing
+local-data API; native code, bridge and SQL schema are unchanged, so no rebuild is
+required. No dependencies were added.
+
+- S01 first open: continue as guest (saves default local settings), sign-in explains
+  that the cloud is not available yet, purpose for adults, storage explanation.
+- S02 connect: in-app Bluetooth explanation before the system prompt, automatic first
+  search, explicit choice by ID, cancel/search again, connecting, connected with
+  battery and first reading, failure with retry/another sensor/system settings.
+- S03 ready: sensor and battery, fresh/stale/missing pulse, route toggle with an
+  explanation before the location prompt and a non-blocking denial, range alerts,
+  start, notice about recordings recovered after the process ended.
+- S04 session: native active time, pulse with the user range from the session
+  snapshot, last 90 s chart that freezes on pause, sensor lost + reconnect, saving
+  time, GPS status, low space, blocked notifications, storage failure with “Save
+  available part”, pause/resume, finish confirmation.
+- S05 summary (after finish and from history): native aggregates with the provisional
+  parameters from `docs/local-data/local-data-aggregates.md`, gap-aware chart from the
+  HR stream, coverage, average, distance, time in user ranges, interrupted tail notice,
+  local deletion with scope explanation and pending-cleanup retry.
+- H01 history: paginated local list, empty state, “On this phone” mark, cleanup retry.
+- P01 profile: guest status, range alerts, theme, units, time zone, data explanation,
+  diagnostics entry. Text size follows the system.
+- Range editor: user-entered From/To (30–230, inclusive) stored as three ranges
+  (below / within / above); signal vibration/sound/silent/none; alerts stay off until
+  saved; notification permission is requested only when a signal is chosen.
+
+Provisional, not product-validated: alert debounce 10 s, hysteresis 3 bpm, no repeat;
+aggregate parameters 5 s / 30 m / 5 s / 20 m/s / 2 s. The S05 chart is a display
+projection of raw HR records (`active_ms` axis); summary numbers come only from native
+aggregates. Pause boundaries and disconnect events are not in HR payloads, so a column
+next to a pause or loss may show up to 5 s of the previous reading.
+
+Checks: `npm run typecheck`, `npm run lint`, `npm test` (60/60, including new
+`product-session-math` and controller save-acknowledgment tests), `npx expo export
+--platform android`. On the API 34 AVD with the stage 3 debug APK and Metro: S01 →
+guest settings saved, S02 auto-search with “No sensors found” (no BLE on the AVD),
+H01 empty state, P01 theme persisted across JS reload, range 105–130/Silent saved via
+native with notification denial shown. NOT RUN: S03–S05 with a real sensor and saved
+sessions, TalkBack, large text and physical phones.
+
+Known limitations: “no network” status is not shown (no connectivity source without a
+new dependency or bridge change); live distance is shown only in the summary; the
+bottom inset assumes a 48 dp navigation bar because edge-to-edge RN reports no inset.
+Next steps: (2) native CSV/GPX export with system share and independent parser checks;
+(3) session “shapes”, accessibility pass on devices and system-bar insets.

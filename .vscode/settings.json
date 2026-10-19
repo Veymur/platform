@@ -1,0 +1,13 @@
+{
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "prettier.requireConfig": true,
+  "prettier.prettierPath": "./node_modules/prettier/index.cjs",
+  "[javascript][javascriptreact][typescript][typescriptreact][json][jsonc][yaml][html][css][scss][markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[kotlin][java][python]": {
+    "editor.tabSize": 4
+  }
+}

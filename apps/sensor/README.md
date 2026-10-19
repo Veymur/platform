@@ -216,3 +216,37 @@ ANDROID_HOME="$HOME/.cache/veymur-stage0/android-sdk" python3 scripts/verify-loc
 ```
 
 The driver rejects physical serials and mismatched AVDs. It force-stops only the dedicated emulator test host, verifies the committed prefix/uncommitted rollback and interrupted aggregates in a fresh process. Ordinary instrumentation skips this probe; use the driver for both phases. [Physical phone protocol](../../docs/recorder-validation.md) remains open; emulator success does not establish BLE, GPS, locked-screen persistence or battery behavior on a phone.
+
+## Stage 1: application and design foundation (2026-10-19)
+
+The entry point now opens `src/SensorApp.tsx`: recording/history/profile navigation,
+light/dark/system theme selection, and access to the existing recorder diagnostics.
+History is not connected yet. Theme preference lasts until restart. Native recording,
+permissions and local storage are unchanged. UI components, verification and remaining
+work are documented in [src/ui/README.md](src/ui/README.md).
+
+Checks: TypeScript and ESLint passed; all 47 existing JS tests passed; Metro exported
+an Android Hermes bundle successfully. GitHub Actions configuration repeats these
+checks with `npm ci`. Workflow execution on GitHub and device UI acceptance remain pending.
+
+Native verification: `ANDROID_HOME="$HOME/.cache/veymur-stage0/android-sdk" npm run build:android`
+passed (`BUILD SUCCESSFUL`, 57 s). Debug APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+This is a development APK; JS is served by Metro with `npm start`. The first attempt
+without ANDROID_HOME failed to locate the SDK; use the environment setup above.
+No installation, device accessibility check or hardware recording test was performed
+for this UI increment. Existing Gradle deprecation warnings remain.
+
+Autonomous UI preview (2026-10-19): `build:android:offline` passed (53 s),
+`verify:android:offline` passed; APK SHA-256
+`93f04cbe519b68cb1e551c1c079c2bc0704bd428fd9b31a6675e77987513ae01`.
+Installed with `adb -s emulator-5554 install -r` and launched MainActivity successfully
+on `veymur-polar-diagnostic-api34`; UIAutomator confirmed the Russian recording
+shell and all three tabs without Metro. Emulator required `-gpu swiftshader
+-no-snapshot` after the default renderer crashed. This is an internal debug-key-signed
+APK with embedded JS, not a store release. No physical phone was connected.
+
+UI language update (2026-10-19): all shell labels and messages now use English.
+Source scan found no Cyrillic outside `/docs`; no Cyrillic file/directory names
+were found in project sources. Typecheck and lint passed. Embedded-JS Android APK
+rebuilt successfully (12 s), installed over the existing emulator app and launched.
+The earlier APK hash above identifies the prior Russian UI build only.

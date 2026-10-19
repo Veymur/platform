@@ -8,7 +8,7 @@ import java.io.File
 
 /** Opt-in local evidence. No private HR/coordinates or artifacts are committed to test resources. */
 class PrivateRecordingAggregationTest {
-    @Test fun legacyProjectionsAgreeWithIndependentReferenceAndReportParameterSensitivity() {
+    @Test fun privateProjectionsAgreeWithIndependentReferenceAndReportParameterSensitivity() {
         val directory = System.getenv("VEYMUR_AGGREGATE_FIXTURES")?.let(::File)
         assumeTrue("Set VEYMUR_AGGREGATE_FIXTURES to the prepared private TSV directory", directory?.isDirectory == true)
         val files = directory!!.listFiles()!!.filter { it.name.matches(Regex("[0-9a-f]{16}\\.tsv")) }.sortedBy { it.name }
@@ -16,6 +16,7 @@ class PrivateRecordingAggregationTest {
         val cases = files.map { file ->
             val rows = file.readLines().filter { it.isNotBlank() }.map { it.split('\t') }
             val header = rows.first()
+            val polar = header.getOrNull(6) == "polar-processing-boundary-proxy-v1"
             val f = AggregateFixture(header[2].toBooleanStrict())
             f.state = SessionState.valueOf(header[1])
             var recording = false
@@ -27,7 +28,8 @@ class PrivateRecordingAggregationTest {
                     if (row.last() == "suspect") listOf(QualityFlag.suspect_signal) else emptyList()
                 val envelope = f.envelope(ns / 1_000_000, source, flags, ns).copy(sequence = sequence,
                     identity = f.identity("record-$sequence"), recorded_at_utc = java.time.Instant.ofEpochMilli(row[4].toLong()).toString(),
-                    timezone_id = null, quality_reasons = listOf("legacy_append_time_proxy", "timezone_unknown"))
+                    timezone_id = null, quality_reasons = listOf(
+                        if (polar) "polar_capture_projection_boundary_proxy" else "legacy_append_time_proxy", "timezone_unknown"))
                 when (kind) {
                     "hr" -> f.hr.add(HrObservation(envelope, segment, row[5].toInt(), HrUnit.bpm, null))
                     "gps" -> {
@@ -57,6 +59,12 @@ class PrivateRecordingAggregationTest {
             assertEquals("HR coverage differs: ${file.name}", header[4].toDouble(), result.hr_covered_duration_ms, 1e-6)
             if (header[5] == "-") assertNull(result.average_hr_bpm)
             else assertEquals("HR mean differs: ${file.name}", header[5].toDouble(), result.average_hr_bpm!!, 1e-8)
+            if (polar) {
+                assertEquals(header[7].toInt(), result.active_segments.size)
+                assertEquals(f.state == SessionState.interrupted, result.interrupted_tail_unknown)
+                assertNull(result.gps_distance_m)
+                assertTrue(result.route_segments.isEmpty())
+            }
             assertEquals(result, aggregateSession(f.session(), f.events.reversed(), f.hr.reversed(), f.gps.reversed(), f.parameters))
             f
         }

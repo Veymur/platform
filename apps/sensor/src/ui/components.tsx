@@ -3,7 +3,6 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Switch,
   Text,
@@ -11,6 +10,7 @@ import {
   View,
   type TextProps,
 } from "react-native";
+import { useInsets } from "./Insets";
 import { useTheme } from "./Theme";
 import { radius, spacing } from "./tokens";
 export function Label({ style, ...props }: TextProps) {
@@ -122,10 +122,22 @@ export function Toggle({
     </Pressable>
   );
 }
-export function Status({ title, detail }: { title: string; detail?: string }) {
+export function Status({
+  title,
+  detail,
+  live = false,
+}: {
+  title: string;
+  detail?: string;
+  live?: boolean;
+}) {
   const { colors } = useTheme();
   return (
-    <View accessibilityLiveRegion="polite" style={{ gap: spacing.gap }}>
+    <View
+      accessible
+      accessibilityLiveRegion={live ? "polite" : "none"}
+      style={{ gap: spacing.gap }}
+    >
       <Label style={{ color: colors.tide, fontWeight: "600" }}>{title}</Label>
       {detail && <Label>{detail}</Label>}
     </View>
@@ -144,6 +156,7 @@ export function Dialog({
   closeTitle?: string;
 }>) {
   const { colors } = useTheme();
+  const insets = useInsets();
   return (
     <Modal
       visible={visible}
@@ -158,8 +171,8 @@ export function Dialog({
             flexGrow: 1,
             justifyContent: "center",
             padding: spacing.gutter,
-            paddingTop: (StatusBar.currentHeight ?? 0) + spacing.gutter,
-            paddingBottom: spacing.navigationBar + spacing.gutter,
+            paddingTop: insets.top + spacing.gutter,
+            paddingBottom: insets.bottom + spacing.gutter,
           }}
         >
           <View
@@ -192,6 +205,7 @@ export function Choice({
   return (
     <Pressable
       accessibilityRole="radio"
+      accessibilityLabel={detail ? `${title}. ${detail}` : title}
       accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
       onPress={onPress}

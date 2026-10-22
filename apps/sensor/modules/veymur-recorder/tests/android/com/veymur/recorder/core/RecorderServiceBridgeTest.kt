@@ -9,6 +9,7 @@ import com.polar.sdk.api.model.PolarDeviceInfo
 import com.polar.sdk.api.model.PolarHrData
 import com.veymur.recorder.requireRecorderActivity
 import com.veymur.recorder.requireRecorderActionActivity
+import com.veymur.recorder.core.localdata.export.PULSE_CSV_HEADER
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.junit.Assert.*
 import org.junit.Test
@@ -568,4 +569,81 @@ class RecorderServiceBridgeTest {
         } finally { command(service, "finish"); unbind(binding) }
     }
 
+    private val exportParameters = """{"hr_stale_after_ms":5000,"gps_max_accuracy_m":30,"gps_max_gap_ms":5000,"gps_max_speed_m_s":20,"map_hr_window_ms":2000}"""
+    private fun exportRequest(id: String, format: String) = """{"id":"$id","format":"$format","parameters":$exportParameters}"""
+    private fun keepForIndependentCheck(file: File, name: String) {
+        val directory = File(host.filesDir, "user-export-verification").also { it.mkdirs() }
+        file.copyTo(File(directory, name), overwrite = true)
+    }
+    private fun grant(vararg permissions: String) = permissions.forEach { permission ->
+        val descriptor = instrumentation.uiAutomation.executeShellCommand("pm grant ${host.packageName} $permission")
+        ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
+    }
+    @Test fun pulseCsvExportIsBuiltFromSavedSessionAndRemovedWithIt() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); foreground(service)
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            fun hr(bpm: Int) = callbacks.hrNotificationReceived("SYNTHETIC", PolarHrData.PolarHrSample(bpm, 0, 0, emptyList(), emptyList(), false, true, true))
+            val id = command(service, "start").getOrThrow()["sessionId"] as String
+            hr(80); SystemClock.sleep(300); hr(82)
+            command(service, "pause").getOrThrow(); SystemClock.sleep(300); command(service, "resume").getOrThrow()
+            hr(90)
+            val early = command(service, "exportSession", argument = exportRequest(id, "csv"))
+            assertEquals("INVALID_STATE", (early.exceptionOrNull() as RecorderError).code)
+            assertEquals("recording", command(service, "getSnapshot").getOrThrow()["sessionState"])
+            for (request in listOf("not JSON", exportRequest(id, "zip"), """{"id":"$id","format":"csv"}""", exportRequest("missing", "csv"))) {
+                assertEquals("INVALID_ARGUMENT", (command(service, "exportSession", argument = request).exceptionOrNull() as RecorderError).code)
+                assertEquals("recording", command(service, "getSnapshot").getOrThrow()["sessionState"])
+            }
+            command(service, "finish").getOrThrow()
+            val csv = command(service, "exportSession", argument = exportRequest(id, "csv")).getOrThrow()
+            assertEquals("text/csv", csv["mimeType"]); assertEquals(3, csv["rows"])
+            val file = File(csv["path"] as String)
+            assertEquals("veymur-$id-pulse.csv", file.name)
+            val lines = file.readLines()
+            assertEquals(PULSE_CSV_HEADER, lines.first()); assertEquals(4, lines.size)
+            assertEquals(listOf("1", "1", "2"), lines.drop(1).map { it.split(",")[1] })
+            assertEquals(listOf("80", "82", "90"), lines.drop(1).map { it.split(",")[5] })
+            keepForIndependentCheck(file, "bridge-pulse.csv")
+            val gpx = command(service, "exportSession", argument = exportRequest(id, "gpx"))
+            assertEquals("INVALID_STATE", (gpx.exceptionOrNull() as RecorderError).code)
+            assertEquals(true, command(service, "localData", argument = """{"operation":"delete","id":"$id"}""").getOrThrow()["data_deleted"])
+            assertFalse(file.exists())
+        } finally { command(service, "finish"); unbind(binding) }
+    }
+    @Test fun routeGpxExportSplitsAtPauseAndKeepsCsvSeparate() {
+        val binding = bind(); val service = binding.service
+        try {
+            isolated(service); foreground(service)
+            grant(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            val callbacks = field(service, "polarCallbacks").get(service) as PolarSdkCallbacks
+            val listener = field(service, "locations").get(service) as android.location.LocationListener
+            fun fix(longitude: Double) = android.location.Location(android.location.LocationManager.GPS_PROVIDER).apply {
+                latitude = 50.45; this.longitude = longitude; accuracy = 5f
+                time = System.currentTimeMillis(); elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+            }
+            val id = command(service, "start", route = true).getOrThrow()["sessionId"] as String
+            assertEquals(true, command(service, "getSnapshot").getOrThrow()["routeEnabled"])
+            callbacks.hrNotificationReceived("SYNTHETIC", PolarHrData.PolarHrSample(95, 0, 0, emptyList(), emptyList(), false, true, true))
+            listener.onLocationChanged(fix(30.52)); SystemClock.sleep(300); listener.onLocationChanged(fix(30.52001))
+            command(service, "pause").getOrThrow(); SystemClock.sleep(300); command(service, "resume").getOrThrow()
+            SystemClock.sleep(100); listener.onLocationChanged(fix(30.52003)); SystemClock.sleep(300); listener.onLocationChanged(fix(30.52004))
+            writer(service) {}
+            command(service, "finish").getOrThrow()
+            val gpx = command(service, "exportSession", argument = exportRequest(id, "gpx")).getOrThrow()
+            assertEquals("application/gpx+xml", gpx["mimeType"])
+            val file = File(gpx["path"] as String)
+            assertEquals("veymur-$id-route.gpx", file.name)
+            val text = file.readText()
+            assertTrue((gpx["rows"] as Int) >= 4)
+            assertTrue(Regex("<trkseg>").findAll(text).count() >= 2)
+            assertTrue(text.contains("<gpxtpx:hr>95</gpxtpx:hr>"))
+            keepForIndependentCheck(file, "bridge-route.gpx")
+            val csv = File(command(service, "exportSession", argument = exportRequest(id, "csv")).getOrThrow()["path"] as String)
+            assertTrue(file.exists() && csv.exists())
+            assertEquals(true, command(service, "localData", argument = """{"operation":"delete","id":"$id"}""").getOrThrow()["data_deleted"])
+            assertFalse(file.exists()); assertFalse(csv.exists())
+        } finally { command(service, "finish"); unbind(binding) }
+    }
 }

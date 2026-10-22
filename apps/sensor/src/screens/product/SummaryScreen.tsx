@@ -11,7 +11,9 @@ import {
   Warning,
 } from "../../ui/components";
 import { HrColumns } from "../../ui/HrColumns";
+import { SessionShape } from "../../ui/SessionShape";
 import { useProduct } from "../../product/ProductContext";
+import { forgetSessionShape } from "../../product/useSessionShapes";
 import { localDataClient } from "../../recorder/LocalDataClient";
 import type {
   DeletionResult,
@@ -28,6 +30,7 @@ import {
   withoutErrorCode,
   type HrSample,
 } from "../../product/sessionMath";
+import { ExportDialog } from "./ExportDialog";
 import { Muted, Subheading } from "./shared";
 
 const maxChartPages = 150;
@@ -118,12 +121,14 @@ export function SummaryScreen({
   const [deleting, setDeleting] = useState(false);
   const [deletion, setDeletion] = useState<DeletionResult | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [exportVisible, setExportVisible] = useState(false);
   const remove = async () => {
     setConfirmDelete(false);
     setDeleting(true);
     setDeleteError(null);
     try {
       const result = await localDataClient.deleteSession(sessionId);
+      forgetSessionShape(sessionId);
       setDeletion(result);
       if (result.cleanup === "complete") onDeleted();
     } catch (cause) {
@@ -176,6 +181,20 @@ export function SummaryScreen({
       <Heading>Session summary</Heading>
       <Label>{formatDateTime(session.started_utc_ms, timeZone)}</Label>
       <Status title={stateText(session.state)} />
+      {summary && (
+        <View style={{ alignItems: "center" }}>
+          <SessionShape
+            label="Shape of this session"
+            size={168}
+            columns={sessionChartColumns(
+              samples,
+              summary.active_duration_ms,
+              details.parameters.hr_stale_after_ms,
+              48,
+            )}
+          />
+        </View>
+      )}
       {summary?.interrupted_tail_unknown && (
         <Warning
           title="The end of this recording is unknown"
@@ -305,6 +324,13 @@ export function SummaryScreen({
           this version.
         </Muted>
       )}
+      {deletable && summary && (
+        <Action
+          title="Export this session"
+          secondary
+          onPress={() => setExportVisible(true)}
+        />
+      )}
       {close}
       {deletable && (
         <Action
@@ -332,6 +358,12 @@ export function SummaryScreen({
       {deleteError && (
         <Warning title="Couldn't delete the session" detail={deleteError} />
       )}
+      <ExportDialog
+        visible={exportVisible}
+        sessionId={sessionId}
+        routeRequested={session.route_requested === true}
+        onClose={() => setExportVisible(false)}
+      />
       <Dialog
         visible={confirmDelete}
         title="Delete this session?"

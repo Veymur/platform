@@ -89,7 +89,7 @@ adb -s emulator-5554 shell am start -W -a android.intent.action.VIEW \
 adb -s emulator-5554 logcat -d -s ReactNativeJS:I '*:S'
 ```
 
-The current screen is “Veymur · recording validation”: storage becomes ready, and a disconnected sensor shows “No current heart rate”. The typed handshake requires contractVersion=7/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
+Since stage 4 the app opens the product screens (S01 on a fresh install); the diagnostic screen is under Profile → Recorder diagnostics. The typed handshake requires contractVersion=9/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
 
 An incompatible native binary produces a rebuild/reinstall error. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, registration, permissions or plugin/config changes require prebuild and a new installation. JS reload updates only JS. This **debug development APK** uses Metro; it supports the JS reload scenarios. It is separate from the autonomous diagnostic variant below.
 
@@ -204,7 +204,7 @@ Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings
 
 ### Local history API
 
-`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v7 (local operations were introduced in v6); no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history screens, CSV/GPX, and deletion confirmation UI remain separate work. See [local operations contract and verification](../../docs/local-data-operations.md).
+`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v9 (local operations were introduced in v6); no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history, deletion confirmation and user CSV/GPX export are added in stage 4. See [local operations contract and verification](../../docs/local-data-operations.md).
 
 ### Local data verification
 
@@ -374,3 +374,103 @@ new dependency or bridge change); live distance is shown only in the summary; th
 bottom inset assumes a 48 dp navigation bar because edge-to-edge RN reports no inset.
 Next steps: (2) native CSV/GPX export with system share and independent parser checks;
 (3) session “shapes”, accessibility pass on devices and system-bar insets.
+
+## Sensor implementation stage 4 — step 2: user CSV/GPX export (2026-10-19)
+
+Bridge **v8** adds `exportSession(request)`; rebuild/reinstall v7 binaries. SQL schema
+and dependencies are unchanged. S05 → “Export this session” offers “Pulse values
+(CSV)” and, for sessions with the route on, “Route (GPX)”, then opens the system
+share sheet. Files are written by the native writer from the same
+`local-session-aggregates-v1` result as the summary (no second algorithm), only for
+completed/interrupted sessions within the interactive limit (50 000 records /
+16 MiB) and with 64 MiB + 3× payload free cache space. Files are temporary
+(`cache/exports/veymur-<id>-pulse.csv`, `veymur-<id>-route.gpx`, written atomically,
+removed after 24 h and by local session deletion together with the old ZIP). Export
+errors are returned to the UI and do not stop an active recording.
+
+`pulse.csv` (UTF-8, LF): one row per stored HR observation, ordered by sequence.
+
+| Column                         | Meaning                                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `session_id`, `observation_id` | Stable local IDs                                                                                |
+| `segment_number`               | Active segment, 1-based; a change means pause/resume                                            |
+| `received_at_utc`              | Phone receipt time, not a sensor measurement time                                               |
+| `active_time_s`                | Active time at receipt; pauses are excluded                                                     |
+| `heart_rate_bpm`               | Stored value, unchanged                                                                         |
+| `usable`                       | Used by the summary (`true`/`false`)                                                            |
+| `usable_until_active_time_s`   | End of the usable interval (next sample, stale limit, loss or segment end); empty when unusable |
+| `exclusion_reasons`            | `;`-separated aggregator reasons for unusable rows                                              |
+
+Missing pulse is never written as a row or as zero: uncovered time is the gap between
+`usable_until_active_time_s` and the next usable row. `route.gpx` (GPX 1.1): one
+track, one `trkseg` per aggregator route segment (split at pauses, gaps, GPS loss and
+excluded/implausible points; never join them), `<time>` = fix UTC, `<ele>` when known,
+heart rate as `gpxtpx:hr` only when matched within `map_hr_window_ms`. Excluded raw GPS
+points are not in GPX; they remain in the diagnostic ZIP.
+
+Independent check: `python3 -I scripts/verify_user_export.py FILE... [--expect JSON]`
+(stdlib `csv`/`xml.etree`, no Kotlin code) validates header, UTC times, monotonic
+active time, non-overlapping usable intervals, reasons for unusable rows, GPX
+namespaces, coordinate ranges, monotonic segment times and positive heart rate, and
+prints counts of rows, segments, coverage, gaps and points.
+
+Checks: `npm run typecheck`, `npm run lint`, `npm test` (61/61); `python3 -m unittest
+discover -s scripts -p 'test_verify_user_export.py'` (5/5); `npm run prebuild:android`;
+`:app:assembleDebug :app:assembleDebugAndroidTest :veymur-recorder:lintDebug
+:veymur-recorder:testDebugUnitTest` (JVM 52, 1 private-fixture skip; 6 new format
+tests). API 34 AVD: `RecorderServiceBridgeTest` 21/21 (2 new end-to-end export tests),
+storage/journal/session/ingress/validation/failure classes 38 OK with the expected
+external-probe skip, Polar replay 8/8. Files produced by the bridge tests passed the
+independent verifier: CSV 3 rows / 2 segments / 1 gap, GPX 2 segments / 4 points /
+2 with pulse. App on bridge v8 opened with persisted settings.
+
+NOT RUN: export dialog with a real recorded session and the system share sheet
+(no sensor on the AVD), physical phones, iOS. Next: step 3 — session “shapes”,
+accessibility pass on devices and system-bar insets.
+
+## Sensor implementation stage 4 — step 3: shapes, insets, network, accessibility (2026-10-22)
+
+Bridge **v9** adds `getSystemInsets()`, `getNetworkStatus()` and the `onNetwork`
+event; rebuild/reinstall v8 binaries. The module manifest adds
+`ACCESS_NETWORK_STATE`. SQL schema and dependencies are unchanged.
+
+- Insets: status/navigation bar and display cutout insets come from Android
+  `WindowInsets` (dp) and are refreshed on dimension changes and when the app
+  becomes active; the 48 dp/status-bar values remain only as a fallback. Tabs,
+  scroll content, dialogs and the diagnostics modal use them.
+- Network: the default-network callback reports `connected`/`validated`
+  (`onLost` → offline). S04 shows “Online” / “No network” and states that
+  recording and saving work without a network.
+- Session shapes: drawn from the session's own HR stream with the same gap-aware
+  columns as the chart (time runs clockwise from the top, distance from the
+  centre is pulse, gaps sit on a dotted inner ring). S05 shows a large shape; H01
+  rows show thumbnails, loaded one session at a time, cached, not loaded while a
+  recording is active and skipped above 6 000 HR records. S04 shows a live shape of
+  the last 90 s that moves only with fresh readings, stops on stale pulse or pause
+  and is hidden when the system “remove animations” setting is on.
+- Accessibility: live regions are opt-in (connection, sensor and network status
+  only; the per-second save time is no longer announced); radio choices expose
+  clean labels; history thumbnails are hidden from screen readers because each row
+  has a full text label.
+
+Checks: `npm run typecheck`, `npm run lint`, `npm test` (69/69, including token
+contrast, shape geometry, live-shape freeze, insets/network decoders and the v9
+handshake), Prettier on edited files; `:app:assembleDebug
+:app:assembleDebugAndroidTest :veymur-recorder:lintDebug
+:veymur-recorder:testDebugUnitTest` (JVM 52, 1 private-fixture skip). API 34 AVD:
+instrumentation 67 OK (bridge 21, storage/journal/session/ingress/validation/failure
+38, replay 8) with the expected external-probe skip. Manual AVD checks: native
+insets 24 dp in gesture mode and 48 dp with three buttons; network events
+offline → connected → validated → offline; font scale 2.0 on S02, H01 and P01
+without clipping; uiautomator audit of P01 at font scale 2.0: every interactive
+element ≥ 48 dp with a label. Font scale, navigation mode and the AVD's disabled
+network were restored afterwards.
+
+Contrast (WCAG): all text pairs used by product screens are ≥ 4.5:1 in both
+themes and borders/chart marks ≥ 3:1. Design follow-up: white text on the pressed
+primary button in dark theme (`on-solid` on `solid-press`) is 4.01:1; the design
+token was not changed here.
+
+NOT RUN: TalkBack navigation by a person, S03–S05 with a real sensor (live shape,
+network status in S04, export share sheet), physical phones and iOS. Stage 4
+remains open until the local flow is accepted on hardware.

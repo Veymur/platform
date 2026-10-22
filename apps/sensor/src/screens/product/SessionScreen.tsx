@@ -11,6 +11,7 @@ import {
   Warning,
 } from "../../ui/components";
 import { HrColumns } from "../../ui/HrColumns";
+import { SessionShape } from "../../ui/SessionShape";
 import { useTheme } from "../../ui/Theme";
 import { useProduct } from "../../product/ProductContext";
 import { localDataClient } from "../../recorder/LocalDataClient";
@@ -18,6 +19,7 @@ import {
   formatAge,
   formatClock,
   formatTime,
+  frozenLiveNow,
   liveChartColumns,
   rangeContaining,
   withoutErrorCode,
@@ -62,7 +64,8 @@ const titles = {
 
 export function SessionScreen() {
   const { colors } = useTheme();
-  const { recorder, liveSamples, nowMs, timeZone } = useProduct();
+  const { recorder, liveSamples, nowMs, timeZone, network, reduceMotion } =
+    useProduct();
   const { snapshot, controller, pending, error } = recorder;
   const [confirmFinish, setConfirmFinish] = useState(false);
   const ranges = useSessionRanges(snapshot?.sessionId ?? null);
@@ -138,6 +141,24 @@ export function SessionScreen() {
           columns={liveChartColumns(liveSamples, chartNow)}
           height={80}
         />
+        {!reduceMotion && (
+          <View style={{ alignItems: "center" }}>
+            <SessionShape
+              label={
+                fresh && !paused
+                  ? "Live shape of the last 90 seconds"
+                  : "Live shape, stopped until a fresh reading arrives"
+              }
+              size={128}
+              columns={liveChartColumns(
+                liveSamples,
+                frozenLiveNow(liveSamples, nowMs, fresh && !paused),
+                90000,
+                36,
+              )}
+            />
+          </View>
+        )}
       </Card>
       <Card>
         <Detail
@@ -150,6 +171,7 @@ export function SessionScreen() {
           }
         />
         <Status
+          live
           title={connected ? "● Sensor connected" : "○ Sensor lost"}
           detail={
             connected
@@ -170,9 +192,20 @@ export function SessionScreen() {
           title={interrupted ? "Not saving" : "● Saving on this phone"}
           detail={
             snapshot.lastCommitUtcMs
-              ? `Last saved at ${formatTime(snapshot.lastCommitUtcMs, timeZone)}. No network needed.`
-              : "No network needed."
+              ? `Last saved at ${formatTime(snapshot.lastCommitUtcMs, timeZone)}.`
+              : "Waiting for the first save."
           }
+        />
+        <Status
+          live
+          title={
+            network === null
+              ? "Network status unknown"
+              : network.validated
+                ? "● Online"
+                : "○ No network"
+          }
+          detail="Recording and saving work without a network."
         />
       </Card>
       {interrupted && (

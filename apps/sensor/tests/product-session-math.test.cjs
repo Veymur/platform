@@ -251,3 +251,51 @@ test("provisional aggregate parameters match the documented validation set", () 
     map_hr_window_ms: 2000,
   });
 });
+
+test("session shape runs clockwise from the top, maps pulse to radius and keeps gaps on the inner ring", () => {
+  const columns = [
+    { bpm: 100, pauseBefore: false },
+    { bpm: null, pauseBefore: false },
+    { bpm: 140, pauseBefore: false },
+    { bpm: 120, pauseBefore: false },
+  ];
+  const points = plain(m.shapePoints(columns));
+  const radius = (point) => Math.hypot(point.x - 0.5, point.y - 0.5) * 2;
+  assert.ok(Math.abs(points[0].x - 0.5) < 1e-9 && points[0].y < 0.5);
+  assert.ok(points[1].x > 0.5 && Math.abs(points[1].y - 0.5) < 1e-9);
+  assert.ok(Math.abs(radius(points[0]) - m.shapeInnerRadius) < 1e-9);
+  assert.ok(Math.abs(radius(points[2]) - 1) < 1e-9);
+  assert.ok(
+    Math.abs(
+      radius(points[3]) - (m.shapeInnerRadius + (1 - m.shapeInnerRadius) / 2),
+    ) < 1e-9,
+  );
+  assert.equal(points[1].hasPulse, false);
+  assert.ok(Math.abs(radius(points[1]) - m.shapeInnerRadius) < 1e-9);
+  assert.deepEqual(plain(m.shapePoints([])), []);
+  const flat = plain(
+    m.shapePoints([
+      { bpm: 90, pauseBefore: false },
+      { bpm: 90, pauseBefore: false },
+    ]),
+  );
+  assert.ok(
+    flat.every(
+      (point) =>
+        Math.abs(
+          radius(point) - (m.shapeInnerRadius + (1 - m.shapeInnerRadius) / 2),
+        ) < 1e-9,
+    ),
+  );
+});
+
+test("live shape stops at the last fresh reading when pulse is stale or recording is paused", () => {
+  const samples = [
+    { atMs: 1000, bpm: 80 },
+    { atMs: 2000, bpm: 82 },
+    { atMs: 3000, bpm: null },
+  ];
+  assert.equal(m.frozenLiveNow(samples, 9000, true), 9000);
+  assert.equal(m.frozenLiveNow(samples, 9000, false), 2000);
+  assert.equal(m.frozenLiveNow([{ atMs: 3000, bpm: null }], 9000, false), 9000);
+});

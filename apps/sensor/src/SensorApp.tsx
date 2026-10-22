@@ -22,7 +22,7 @@ import { withoutErrorCode } from "./product/sessionMath";
 import { routePermissionGranted } from "./recorder/permissions";
 import { ThemeProvider, useTheme } from "./ui/Theme";
 import { Action, Label, Status, Warning } from "./ui/components";
-import { spacing } from "./ui/tokens";
+import { useInsets } from "./ui/Insets";
 
 const tabs = ["Record", "History", "Profile"] as const;
 type Tab = (typeof tabs)[number];
@@ -47,6 +47,7 @@ function useBack(handler: (() => void) | null) {
 
 function Shell() {
   const { colors, isDark, setPreference } = useTheme();
+  const insets = useInsets();
   const { recorder, preferences } = useProduct();
   const { snapshot, controller } = recorder;
   const settings = preferences.preferences?.settings ?? null;
@@ -213,7 +214,7 @@ function Shell() {
     <View
       style={{
         flex: 1,
-        paddingTop: StatusBar.currentHeight ?? 0,
+        paddingTop: insets.top,
         backgroundColor: colors.bg,
       }}
     >
@@ -223,7 +224,11 @@ function Shell() {
       />
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 20, paddingBottom: 40, gap: 20 }}
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: (showTabs ? 0 : insets.bottom) + 40,
+          gap: 20,
+        }}
       >
         {body()}
       </ScrollView>
@@ -234,7 +239,7 @@ function Shell() {
             flexDirection: "row",
             flexWrap: "wrap",
             padding: 8,
-            paddingBottom: spacing.navigationBar + 8,
+            paddingBottom: insets.bottom + 8,
             gap: 8,
             backgroundColor: colors.raised,
             borderTopWidth: 1,
@@ -294,7 +299,7 @@ function Shell() {
         <View
           style={{
             flex: 1,
-            paddingTop: StatusBar.currentHeight ?? 0,
+            paddingTop: insets.top,
             backgroundColor: colors.bg,
           }}
         >

@@ -289,6 +289,39 @@ export function describeColumns(columns: readonly ChartColumn[]): {
   };
 }
 
+export const shapeInnerRadius = 0.35;
+export type ShapePoint = { x: number; y: number; hasPulse: boolean };
+export function shapePoints(columns: readonly ChartColumn[]): ShapePoint[] {
+  const { min, max } = describeColumns(columns);
+  return columns.map((column, index) => {
+    const angle = -Math.PI / 2 + (2 * Math.PI * index) / columns.length;
+    const spread =
+      min === null || max === null || max === min ? null : max - min;
+    const radius =
+      column.bpm === null || min === null
+        ? shapeInnerRadius
+        : shapeInnerRadius +
+          (1 - shapeInnerRadius) *
+            (spread === null ? 0.5 : (column.bpm - min) / spread);
+    return {
+      x: 0.5 + 0.5 * radius * Math.cos(angle),
+      y: 0.5 + 0.5 * radius * Math.sin(angle),
+      hasPulse: column.bpm !== null,
+    };
+  });
+}
+export function frozenLiveNow(
+  samples: readonly LiveSample[],
+  nowMs: number,
+  moving: boolean,
+): number {
+  if (moving) return nowMs;
+  const lastFresh = [...samples]
+    .reverse()
+    .find((sample) => sample.bpm !== null);
+  return lastFresh?.atMs ?? nowMs;
+}
+
 const pad = (value: number) => String(value).padStart(2, "0");
 export function formatClock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

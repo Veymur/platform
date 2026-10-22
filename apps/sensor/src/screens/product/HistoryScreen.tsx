@@ -4,6 +4,11 @@ import { Action, Heading, Label, Status, Warning } from "../../ui/components";
 import { useTheme } from "../../ui/Theme";
 import { radius, spacing } from "../../ui/tokens";
 import { useProduct } from "../../product/ProductContext";
+import {
+  useSessionShapes,
+  type ShapeState,
+} from "../../product/useSessionShapes";
+import { SessionShape } from "../../ui/SessionShape";
 import { localDataClient } from "../../recorder/LocalDataClient";
 import type {
   HistoryCursor,
@@ -26,6 +31,24 @@ const stateLabel = (state: SavedSession["state"]) =>
 const errorText = (cause: unknown) =>
   cause instanceof Error ? withoutErrorCode(cause.message) : String(cause);
 
+function ShapeThumbnail({ shape }: { shape: ShapeState | undefined }) {
+  if (shape === undefined || typeof shape === "string")
+    return (
+      <View
+        style={{ width: 64, height: 64 }}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+    );
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <SessionShape label="Session shape" size={64} columns={shape} />
+    </View>
+  );
+}
 export function HistoryScreen({
   onOpen,
   onRecord,
@@ -34,11 +57,12 @@ export function HistoryScreen({
   onRecord: () => void;
 }) {
   const { colors } = useTheme();
-  const { timeZone } = useProduct();
+  const { timeZone, recorder } = useProduct();
   const [items, setItems] = useState<SavedSession[] | null>(null);
   const [next, setNext] = useState<HistoryCursor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const shapes = useSessionShapes(items, recorder.snapshot?.sessionId != null);
   const [pendingCleanup, setPendingCleanup] = useState<string[]>([]);
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
   const loadFirst = useCallback(async () => {
@@ -159,23 +183,28 @@ export function HistoryScreen({
           style={({ pressed }) => ({
             minHeight: spacing.tap,
             padding: 16,
-            gap: 4,
+            gap: 16,
+            flexDirection: "row",
+            alignItems: "center",
             borderWidth: 1,
             borderRadius: radius.medium,
             borderColor: colors.rule,
             backgroundColor: pressed ? colors.sunk : colors.raised,
           })}
         >
-          <Label style={{ fontWeight: "600" }}>
-            {formatDateTime(item.started_utc_ms, timeZone)}
-          </Label>
-          <Label>
-            {formatDuration(item.recorded_active_ms)} ·{" "}
-            {item.route_requested ? "pulse and route" : "pulse only"}
-          </Label>
-          <Label style={{ color: colors["ink-2"] }}>
-            {stateLabel(item.state)} · 📱 On this phone
-          </Label>
+          <ShapeThumbnail shape={shapes.get(item.id)} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Label style={{ fontWeight: "600" }}>
+              {formatDateTime(item.started_utc_ms, timeZone)}
+            </Label>
+            <Label>
+              {formatDuration(item.recorded_active_ms)} ·{" "}
+              {item.route_requested ? "pulse and route" : "pulse only"}
+            </Label>
+            <Label style={{ color: colors["ink-2"] }}>
+              {stateLabel(item.state)} · 📱 On this phone
+            </Label>
+          </View>
         </Pressable>
       ))}
       {next && (

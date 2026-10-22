@@ -439,6 +439,15 @@ class RecorderService : Service() {
                                 mapOf("sessionId" to engine!!.id, "state" to engine!!.state)
                             }
                             "finish" -> finishOnWorker("Recording saved. Ready to export")
+                            "exportSession" -> {
+                                try {
+                                    if (argument == null || argument.length > 65536) throw RecorderError("INVALID_ARGUMENT", "Invalid export request")
+                                    journal!!.exportUserFile(JSONObject(argument))
+                                } catch (e: RecorderError) { throw e }
+                                catch (e: IllegalArgumentException) { throw RecorderError("INVALID_ARGUMENT", "Invalid export request") }
+                                catch (e: org.json.JSONException) { throw RecorderError("INVALID_ARGUMENT", "Invalid export request") }
+                                catch (e: Exception) { throw RecorderError("STORAGE_ERROR", "Export could not be prepared; saved sessions and recording are not affected") }
+                            }
                             "exportLatest" -> {
                                 val id = journal!!.latest() ?: throw RecorderError("NO_SESSIONS", "No saved sessions")
                                 mapOf("path" to journal!!.export(id).absolutePath)

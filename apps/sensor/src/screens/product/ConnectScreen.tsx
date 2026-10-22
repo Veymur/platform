@@ -58,7 +58,7 @@ export function ConnectScreen({
     void search();
   }, [granted, snapshot, search]);
   if (granted === null || !snapshot)
-    return <Status title="Checking Bluetooth permission…" />;
+    return <Status live title="Checking Bluetooth permission…" />;
   const busy = pending !== null;
   const connected = snapshot.connectedDeviceId;
   const failedTarget =
@@ -114,6 +114,7 @@ export function ConnectScreen({
         <Heading>Connect a sensor</Heading>
         <Card>
           <Status
+            live
             title="✓ Connected"
             detail={`${device?.name ?? "Polar Verity Sense"} · ID ${connected}`}
           />
@@ -152,6 +153,7 @@ export function ConnectScreen({
         <Heading>Connect a sensor</Heading>
         <Card>
           <Status
+            live
             title="Not connected"
             detail="Couldn't connect to the sensor"
           />
@@ -185,6 +187,7 @@ export function ConnectScreen({
         <Heading>Connect a sensor</Heading>
         <Card>
           <Status
+            live
             title="Connecting…"
             detail={`Polar Verity Sense · ID ${snapshot.selectedDeviceId}`}
           />
@@ -207,11 +210,13 @@ export function ConnectScreen({
       <Card>
         {snapshot.discoveryActive || pending === "Search" ? (
           <Status
+            live
             title="Looking for sensors"
             detail="Turn your sensor on and keep it close to the phone."
           />
         ) : (
           <Status
+            live
             title={
               snapshot.devices.length
                 ? "Select your sensor"

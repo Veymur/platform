@@ -57,6 +57,10 @@ class Journal(private val context: Context, private val stamp: () -> JournalStam
         owner()
         return JournalOperations(db, localIdentity, File(context.cacheDir, "exports"), ::recalculate).execute(request)
     }
+    fun exportUserFile(request: JSONObject): Map<String, Any?> {
+        owner()
+        return JournalOperations(db, localIdentity, File(context.cacheDir, "exports"), ::recalculate).exportUserFile(request)
+    }
     fun recoverInterrupted(): Int = transaction {
         val ids = mutableListOf<String>()
         db.rawQuery("SELECT id FROM sessions WHERE state IN ('recording','paused','finishing')", null).use {

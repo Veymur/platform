@@ -20,6 +20,7 @@ class RecorderModule : Module() {
     private var destroyed = false
     private val pending = mutableListOf<Pair<Promise, (RecorderService) -> Unit>>()
     private val listener: (Map<String, Any?>) -> Unit = { if (observing && !destroyed) runCatching { sendEvent("onSnapshot", it) }; Unit }
+    private var networkWatcher: NetworkWatcher? = null
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             val connected = (binder as RecorderService.LocalBinder).service
@@ -36,14 +37,21 @@ class RecorderModule : Module() {
     }
     override fun definition() = ModuleDefinition {
         Name("VeymurRecorder")
-        Events("onSnapshot")
+        Events("onSnapshot", "onNetwork")
         AsyncFunction("getModuleInfo") {
-            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 6, "recorderImplemented" to true)
+            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 9, "recorderImplemented" to true)
         }
         AsyncFunction("ensureActivity") { promise: Promise -> main.post {
             try { requireRecorderActivity(appContext.currentActivity, visible = true); promise.resolve(mapOf("available" to true)) }
             catch (error: Exception) { reject(promise, error) }
         } }
+        AsyncFunction("getSystemInsets") { promise: Promise -> main.post {
+            try { promise.resolve(systemInsetsDp(appContext.currentActivity)) } catch (error: Exception) { reject(promise, error) }
+        } }
+        AsyncFunction("getNetworkStatus") { promise: Promise ->
+            val ctx = appContext.reactContext?.applicationContext
+            if (ctx == null) reject(promise, RecorderError("SERVICE_UNAVAILABLE", "React context unavailable")) else promise.resolve(networkStatus(ctx))
+        }
         OnActivityEntersForeground { main.post { hostVisible = true; service?.activityVisible(true) } }
         OnActivityEntersBackground { main.post { hostVisible = false; service?.activityVisible(false) } }
         AsyncFunction("localData") { request: String, promise: Promise -> command("localData", promise, argument = request) }
@@ -61,6 +69,7 @@ class RecorderModule : Module() {
         AsyncFunction("resume") { promise: Promise -> command("resume", promise) }
         AsyncFunction("finish") { promise: Promise -> command("finish", promise) }
         AsyncFunction("exportLatest") { promise: Promise -> export("exportLatest", promise) }
+        AsyncFunction("exportSession") { request: String, promise: Promise -> export("exportSession", promise, request) }
         AsyncFunction("shareExport") { uri: String, promise: Promise -> main.post {
             try {
                 val activity = requireRecorderActivity(appContext.currentActivity, visible = true)
@@ -69,18 +78,19 @@ class RecorderModule : Module() {
                     throw RecorderError("INVALID_ARGUMENT", "Use an export URI returned by this app")
                 activity.contentResolver.openAssetFileDescriptor(parsed, "r")?.use { }
                     ?: throw RecorderError("INVALID_ARGUMENT", "Export file unavailable")
+                val mimeType = exportMimeType(parsed.lastPathSegment.orEmpty())
                 val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/zip"; putExtra(Intent.EXTRA_STREAM, parsed)
+                    type = mimeType; putExtra(Intent.EXTRA_STREAM, parsed)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    clipData = ClipData.newRawUri("Local ZIP export", parsed)
+                    clipData = ClipData.newRawUri("Local export", parsed)
                 }
-                activity.startActivity(Intent.createChooser(intent, "Share ZIP"))
+                activity.startActivity(Intent.createChooser(intent, "Save or share export"))
                 promise.resolve(mapOf("chooserOpened" to true))
             } catch (error: Exception) { reject(promise, error) }
         } }
-        OnStartObserving { main.post { observing = true; service?.addListener(listener) } }
-        OnStopObserving { main.post { observing = false; service?.removeListener(listener) } }
-        OnDestroy { main.post { destroyed = true; releaseBinding("JS bridge detached") } }
+        OnStartObserving { main.post { observing = true; service?.addListener(listener); startNetworkWatcher() } }
+        OnStopObserving { main.post { observing = false; service?.removeListener(listener); networkWatcher?.stop(); networkWatcher = null } }
+        OnDestroy { main.post { destroyed = true; networkWatcher?.stop(); networkWatcher = null; releaseBinding("JS bridge detached") } }
     }
     private fun export(name: String, promise: Promise, captureId: String? = null) {
         withService(promise) { recorder -> recorder.execute(name, argument = captureId) { result ->
@@ -88,7 +98,7 @@ class RecorderModule : Module() {
                 try {
                     val ctx = requireNotNull(context)
                     val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.exports", File(value["path"] as String))
-                    promise.resolve(mapOf("uri" to uri.toString(), "mimeType" to "application/zip"))
+                    promise.resolve(mapOf("uri" to uri.toString(), "mimeType" to exportMimeType(File(value["path"] as String).name)))
                 } catch (error: Exception) { reject(promise, error) }
             }, onFailure = { reject(promise, it) })
         } }
@@ -132,6 +142,16 @@ class RecorderModule : Module() {
         if (bound) { runCatching { context?.unbindService(connection) }; bound = false }
         pending.toList().forEach { reject(it.first, RecorderError("SERVICE_UNAVAILABLE", reason)) }; pending.clear()
         // A started foreground service owns recording; detaching JS only releases its binding.
+    }
+    private fun startNetworkWatcher() {
+        if (networkWatcher != null) return
+        val ctx = appContext.reactContext?.applicationContext ?: return
+        networkWatcher = NetworkWatcher(ctx) { status -> main.post { if (observing && !destroyed) runCatching { sendEvent("onNetwork", status) } } }.also { it.start() }
+    }
+    private fun exportMimeType(name: String) = when {
+        name.endsWith(".csv") -> "text/csv"
+        name.endsWith(".gpx") -> "application/gpx+xml"
+        else -> "application/zip"
     }
     private fun reject(promise: Promise, error: Throwable) {
         val code = when (error) {

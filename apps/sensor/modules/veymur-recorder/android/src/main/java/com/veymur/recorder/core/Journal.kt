@@ -57,6 +57,10 @@ class Journal(private val context: Context, private val stamp: () -> JournalStam
         owner()
         return JournalOperations(db, localIdentity, File(context.cacheDir, "exports"), ::recalculate).execute(request)
     }
+    fun exportUserFile(request: JSONObject): Map<String, Any?> {
+        owner()
+        return JournalOperations(db, localIdentity, File(context.cacheDir, "exports"), ::recalculate).exportUserFile(request)
+    }
     fun recoverInterrupted(): Int = transaction {
         val ids = mutableListOf<String>()
         db.rawQuery("SELECT id FROM sessions WHERE state IN ('recording','paused','finishing')", null).use {
@@ -143,13 +147,17 @@ class Journal(private val context: Context, private val stamp: () -> JournalStam
         }
         if (state == "completed") db.execSQL("UPDATE sessions SET ended_utc=? WHERE id=?", arrayOf<Any>(stamp().utcMs, id))
     }
-    /** Native read seam for migration/reproducibility; no mobile history API is exposed yet. */
+    /** Native aggregate reader shared by verification and the local details API. */
     fun recalculate(id: String, parameters: AggregateParameters): StoredAggregateResult { owner(); return JournalAggregateReader(db).read(id, parameters) }
 
-    fun latest(): String? = db.rawQuery("SELECT id FROM sessions ORDER BY started DESC LIMIT 1", null).use {
-        if (it.moveToFirst()) it.getString(0) else null
+    fun latest(): String? {
+        owner()
+        return db.rawQuery("SELECT id FROM sessions ORDER BY started DESC LIMIT 1", null).use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
     }
     fun export(id: String): File {
+        owner()
         val metadata = JSONObject().put("schema_version", 1).put("app_version", "0.0.1")
             .put("sdk_version", "8.4.0").put("phone", "${Build.MANUFACTURER} ${Build.MODEL}")
             .put("android", Build.VERSION.RELEASE).put("exported_at_utc_ms", System.currentTimeMillis())
@@ -179,5 +187,5 @@ class Journal(private val context: Context, private val stamp: () -> JournalStam
         }
         return output
     }
-    override fun close() = db.close()
+    override fun close() { owner(); db.close() }
 }

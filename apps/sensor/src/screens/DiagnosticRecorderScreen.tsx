@@ -21,6 +21,8 @@ function AndroidRecorder() {
     <RecorderStatus snapshot={snapshot} />
     <Button title="Find Verity Sense" disabled={!ready || busy || active} onPress={() => { void controller.search(); }} />
     <Button title="Cancel search" disabled={!ready || busy || active} onPress={() => { void controller.cancelSearch(); }} />
+    {snapshot?.selectedDeviceId && !snapshot.connectedDeviceId && <Button title="Reconnect selected sensor" disabled={!ready || busy || snapshot.sessionState === 'interrupted'} onPress={() => { void controller.connect(snapshot.selectedDeviceId!); }} />}
+    <Text>{snapshot?.discoveryActive ? 'Discovery active' : 'Discovery stopped'}</Text>
     <DeviceList devices={snapshot?.devices ?? []} disabled={!ready || busy || active} connect={id => { void controller.connect(id); }} />
     <View style={styles.route}>
       <Text style={{ flex: 1 }}>Record phone route</Text>

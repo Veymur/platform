@@ -26,16 +26,16 @@ class PolarRecorderProcessor(
             }
             "connecting" -> snapshot = snapshot.copy(status = "Connecting to ${event.deviceId}…")
             "connected" -> {
-                snapshot = snapshot.copy(connected = event.deviceId, status = "Sensor connected")
+                snapshot = snapshot.copy(connected = event.deviceId, hr = null, battery = null, status = "Sensor connected; waiting for fresh heart rate")
                 record("connected", JSONObject().put("device", event.deviceId))
             }
             "disconnected" -> {
-                snapshot = snapshot.copy(connected = null, hr = null, status = "Connection lost. The SDK is reconnecting")
+                snapshot = snapshot.copy(connected = null, hr = null, status = "Connection lost. Keep the sensor nearby or reconnect the selected sensor")
                 record("disconnected", JSONObject().put("device", event.deviceId)
                     .put("stream", "hr").put("quality_flags", org.json.JSONArray(listOf("missing"))))
             }
             "battery_level" -> {
-                snapshot = snapshot.copy(battery = payload.getInt("level"))
+                snapshot = snapshot.copy(battery = payload.getInt("level").takeIf { it in 0..100 })
                 record("sensor_battery", JSONObject().put("percent", payload.getInt("level")))
             }
             "device_info" -> when (event.callbackVariant) {
@@ -84,8 +84,8 @@ class PolarRecorderProcessor(
                 snapshot = snapshot.copy(devices = (snapshot.devices + device).distinctBy { it.deviceId })
             }
             "search_error" -> snapshot = snapshot.copy(errorCode = "DISCOVERY_ERROR", status = "Sensor discovery failed; retry")
-            "search_ended" -> {
-                if (payload.getString("reason") != "timeout") return false
+            "search_completed", "search_ended" -> {
+                if (event.eventType == "search_ended" && payload.getString("reason") != "timeout") return false
                 snapshot = snapshot.copy(status = if (snapshot.devices.isEmpty()) "Sensor not found. Turn it on and search again" else "Select your sensor")
             }
             else -> return false // Diagnostic-only callbacks retain their input without adding recorder behavior.

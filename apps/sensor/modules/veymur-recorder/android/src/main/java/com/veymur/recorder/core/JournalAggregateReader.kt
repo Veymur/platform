@@ -9,7 +9,8 @@ import org.json.JSONObject
 
 /** Unavailable is explicit: old append times are never promoted to precise callback times. */
 data class StoredAggregateResult(val projection_version: String, val method_version: String,
-    val aggregates: SessionAggregates?, val unavailable_reasons: List<String>)
+    val aggregates: SessionAggregates?, val unavailable_reasons: List<String>, val inputs: LogicalSessionInputs? = null)
+data class LogicalSessionInputs(val session: Session, val hr: List<HrObservation>, val gps: List<GpsObservation>)
 
 internal class JournalAggregateReader(private val db: SQLiteDatabase) {
     private fun unavailable(reason: String) = StoredAggregateResult("journal-v2-logical-v1", AGGREGATE_METHOD_VERSION, null, listOf(reason))
@@ -70,7 +71,7 @@ internal class JournalAggregateReader(private val db: SQLiteDatabase) {
                 }
             }
             return StoredAggregateResult("journal-v2-logical-v1", AGGREGATE_METHOD_VERSION,
-                aggregateSession(session, events, hr, gps, parameters), emptyList())
+                aggregateSession(session, events, hr, gps, parameters), emptyList(), LogicalSessionInputs(session, hr, gps))
         } catch (_: IllegalArgumentException) { return unavailable("incomplete_or_incompatible_logical_history") }
           catch (_: org.json.JSONException) { return unavailable("malformed_logical_payload") }
     }

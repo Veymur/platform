@@ -1,0 +1,51 @@
+// Source: design/markup-design/assets/css/tokens.css. Chart marks are not text colors.
+export const light = {
+  bg: "#f5f0e6",
+  raised: "#fdfaf3",
+  sunk: "#ece5d5",
+  rule: "#d8d0be",
+  edge: "#857e69",
+  ink: "#16211f",
+  "ink-2": "#3f4b47",
+  "ink-3": "#5e6a65",
+  tide: "#0b6a63",
+  "tide-mark": "#008a76",
+  "tide-wash": "#d6eae2",
+  solid: "#0b6a63",
+  "solid-press": "#08524d",
+  "on-solid": "#ffffff",
+  ember: "#a9480f",
+  "ember-wash": "#f6dfcb",
+  dusk: "#365a9c",
+  "dusk-wash": "#dce3f2",
+} as const;
+export const dark = {
+  bg: "#0e1615",
+  raised: "#16211f",
+  sunk: "#0a1110",
+  rule: "#2a3835",
+  edge: "#6f7e78",
+  ink: "#edf2ec",
+  "ink-2": "#bcc8c2",
+  "ink-3": "#8e9c96",
+  tide: "#67d1c0",
+  "tide-mark": "#22a090",
+  "tide-wash": "#12302c",
+  solid: "#1a7d70",
+  "solid-press": "#1f8e7f",
+  "on-solid": "#ffffff",
+  ember: "#f2a56e",
+  "ember-wash": "#3a2415",
+  dusk: "#93aee8",
+  "dusk-wash": "#1b2740",
+} as const;
+export type Palette = { [K in keyof typeof light]: string };
+export const spacing = {
+  unit: 4,
+  gap: 8,
+  gutter: 20,
+  section: 24,
+  tap: 48,
+  navigationBar: 48,
+} as const;
+export const radius = { small: 10, medium: 16, large: 24 } as const;

@@ -6,11 +6,16 @@ import org.json.JSONArray
 import java.io.File
 import java.time.ZoneId
 import com.veymur.recorder.core.localdata.aggregates.AggregateParameters
+import com.veymur.recorder.core.localdata.export.writePulseCsv
+import com.veymur.recorder.core.localdata.export.writeRouteGpx
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /** Invoked only by Journal's writer. No account, network, or recorder snapshot dependency. */
 internal class JournalOperations(
     private val db: SQLiteDatabase, private val identity: JournalLocalIdentity,
-    private val exports: File, private val calculate: (String, AggregateParameters) -> StoredAggregateResult
+    private val exports: File, private val calculate: (String, AggregateParameters) -> StoredAggregateResult,
+    private val freeBytes: () -> Long = { exports.parentFile?.usableSpace ?: 0L }, private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val profile get() = identity.localProfileId
     private fun invalid(): Nothing = throw RecorderError("INVALID_ARGUMENT", "Invalid local data request")
@@ -69,13 +74,19 @@ internal class JournalOperations(
         val items = ids.take(limit).map(::session)
         return mapOf("items" to items, "next" to if(ids.size>limit) items.last().let { mapOf("started_utc_ms" to it["started_utc_ms"], "id" to it["id"]) } else null)
     }
-    private fun details(r: JSONObject): Map<String, Any?> {
-        keys(r,"operation","id","parameters"); val id = text(r,"id"); val saved = session(id)
+    private fun parameters(r: JSONObject): Pair<JSONObject, AggregateParameters> {
         val p = r.opt("parameters") as? JSONObject ?: invalid()
         keys(p,"hr_stale_after_ms","gps_max_accuracy_m","gps_max_gap_ms","gps_max_speed_m_s","map_hr_window_ms")
-        val parameters = AggregateParameters(integer(p,"hr_stale_after_ms",1,9007199254),number(p,"gps_max_accuracy_m"), integer(p,"gps_max_gap_ms",1,9007199254),number(p,"gps_max_speed_m_s"),integer(p,"map_hr_window_ms",0,9007199254))
+        return p to AggregateParameters(integer(p,"hr_stale_after_ms",1,9007199254),number(p,"gps_max_accuracy_m"), integer(p,"gps_max_gap_ms",1,9007199254),number(p,"gps_max_speed_m_s"),integer(p,"map_hr_window_ms",0,9007199254))
+    }
+    private fun payloadSize(id: String): Pair<Int, Long> =
+        db.rawQuery("SELECT count(*),coalesce(sum(length(payload)),0) FROM (SELECT payload FROM records WHERE session=? LIMIT 50001)",arrayOf(id)).use { it.moveToFirst(); it.getInt(0) to it.getLong(1) }
+    private fun exceedsInteractiveLimit(id: String) = payloadSize(id).let { (count, bytes) -> count>50000 || bytes>16777216 }
+    private fun details(r: JSONObject): Map<String, Any?> {
+        keys(r,"operation","id","parameters"); val id = text(r,"id"); val saved = session(id)
+        val (p, parameters) = parameters(r)
         // Bound synchronous writer work; large sessions remain readable through stream pagination.
-        val tooLarge = db.rawQuery("SELECT count(*),coalesce(sum(length(payload)),0) FROM (SELECT payload FROM records WHERE session=? LIMIT 50001)",arrayOf(id)).use { it.moveToFirst(); it.getInt(0)>50000 || it.getLong(1)>16777216 }
+        val tooLarge = exceedsInteractiveLimit(id)
         val result = if(tooLarge) StoredAggregateResult("journal-v2-logical-v1", "local-session-aggregates-v1", null, listOf("interactive_calculation_limit")) else calculate(id,parameters)
         val a = result.aggregates
         val summary = a?.let { mapOf("distance_method_version" to it.distance_method_version,"sphere_radius_m" to it.sphere_radius_m,"active_duration_ms" to it.active_duration_ms,"hr_covered_duration_ms" to it.hr_covered_duration_ms,
@@ -83,6 +94,36 @@ internal class JournalOperations(
             "interrupted_tail_unknown" to it.interrupted_tail_unknown,"unassigned_hr_duration_ms" to it.unassigned_hr_duration_ms,
             "range_durations" to it.range_durations.map { range -> mapOf("range_id" to range.range_id,"duration_ms" to range.duration_ms) }) }
         return mapOf("session" to saved,"summary" to summary,"parameters" to jsonMap(p),"method_version" to result.method_version,"projection_version" to result.projection_version,"unavailable_reasons" to result.unavailable_reasons)
+    }
+    fun exportUserFile(r: JSONObject): Map<String, Any?> {
+        keys(r,"id","format","parameters"); val id = text(r,"id"); val saved = session(id)
+        choice(r,"format",setOf("csv","gpx")); val format = r.getString("format")
+        val (_, parameters) = parameters(r)
+        if (saved["state"] !in setOf("completed","interrupted")) throw RecorderError("INVALID_STATE","Finish the session before exporting it")
+        val (count, bytes) = payloadSize(id)
+        if (count>50000 || bytes>16777216) throw RecorderError("INVALID_STATE","This session is too long to export on the phone right now")
+        if (freeBytes() < EXPORT_FREE_SPACE_RESERVE + bytes * 3) throw RecorderError("STORAGE_ERROR","Not enough free space to prepare the export")
+        val result = calculate(id,parameters)
+        val aggregates = result.aggregates; val inputs = result.inputs
+        if (aggregates == null || inputs == null) throw RecorderError("INVALID_STATE","Export unavailable: ${result.unavailable_reasons.joinToString(",")}")
+        if (format == "gpx" && aggregates.route_segments.none { it.points.isNotEmpty() }) throw RecorderError("INVALID_STATE","No usable route was recorded in this session")
+        pruneExports()
+        val target = exportFile(exports,id,if (format == "csv") PULSE_SUFFIX else ROUTE_SUFFIX)
+        val temp = File(exports,"${target.name}.${java.util.UUID.randomUUID()}.part")
+        var rows = 0
+        try {
+            java.io.FileOutputStream(temp).use { raw ->
+                val writer = raw.bufferedWriter(Charsets.UTF_8)
+                rows = if (format == "csv") writePulseCsv(inputs.session, inputs.hr, aggregates, writer) else writeRouteGpx(inputs.session, inputs.gps, aggregates, writer)
+                writer.flush(); raw.fd.sync()
+            }
+            Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally { temp.delete() }
+        return mapOf("path" to target.absolutePath, "mimeType" to if (format == "csv") "text/csv" else "application/gpx+xml", "rows" to rows)
+    }
+    private fun pruneExports() {
+        if (!exports.isDirectory && !exports.mkdirs()) throw RecorderError("STORAGE_ERROR","Export folder unavailable")
+        exports.listFiles()?.filter { it.isFile && (it.name.endsWith(".part") || now() - it.lastModified() >= EXPORT_TTL_MS || it.lastModified() > now()) }?.forEach { it.delete() }
     }
     private fun stream(r: JSONObject): Map<String, Any?> {
         keys(r,"operation","id","stream","after_sequence","limit")
@@ -158,16 +199,23 @@ internal class JournalOperations(
         val pending=db.rawQuery("SELECT 1 FROM local_deletion_cleanup WHERE session_id=?",arrayOf(id)).use { it.moveToFirst() }
         var complete=true
         if(pending) {
-            complete=try { val file=exportFile(exports,id); !file.exists() || (file.isFile && file.delete()) } catch(e: Exception) { false }
+            complete=try { MANAGED_SUFFIXES.map { suffix -> exportFile(exports,id,suffix) }.map { file -> !file.exists() || (file.isFile && file.delete()) }.all { it } } catch(e: Exception) { false }
             if(complete) db.execSQL("DELETE FROM local_deletion_cleanup WHERE session_id=?",arrayOf(id))
         }
         return mapOf("id" to id,"data_deleted" to deleted,"cleanup" to if(complete) "complete" else "pending", "cleanup_error" to if(complete) null else "MANAGED_FILE_DELETE_FAILED")
     }
     companion object {
-        fun exportFile(directory: File,id: String): File {
+        const val PULSE_SUFFIX = "-pulse.csv"
+        const val ROUTE_SUFFIX = "-route.gpx"
+        private const val ARCHIVE_SUFFIX = ".zip"
+        private val MANAGED_SUFFIXES = listOf(ARCHIVE_SUFFIX, PULSE_SUFFIX, ROUTE_SUFFIX)
+        private const val EXPORT_TTL_MS = 24L * 60 * 60 * 1000
+        private const val EXPORT_FREE_SPACE_RESERVE = 64L * 1024 * 1024
+        fun exportFile(directory: File,id: String,suffix: String = ARCHIVE_SUFFIX): File {
+            require(suffix in MANAGED_SUFFIXES) { "Unknown export kind" }
             require(id.isNotEmpty() && id.length<=256 && id.none { it=='/' || it=='\\' || it=='\u0000' }) { "Unsafe session export name" }
             require(directory.canonicalFile == File(directory.parentFile.canonicalFile,directory.name)) { "Managed export directory is a link" }
-            val f=File(directory,"veymur-$id.zip")
+            val f=File(directory,"veymur-$id$suffix")
             require(f.canonicalFile==File(directory.canonicalFile,f.name)) { "Export outside managed directory" }; return f
         }
         fun selectedRanges(db: SQLiteDatabase,profile: String): JSONObject? {

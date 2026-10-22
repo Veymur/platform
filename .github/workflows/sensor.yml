@@ -1,0 +1,27 @@
+name: Sensor JavaScript checks
+on:
+  push:
+    paths: ['apps/sensor/**', '.github/workflows/sensor.yml']
+  pull_request:
+    paths: ['apps/sensor/**', '.github/workflows/sensor.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/sensor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/sensor/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/sensor/package-lock.json
+      - run: npm install --global npm@10.9.7
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx expo export --platform android --output-dir dist

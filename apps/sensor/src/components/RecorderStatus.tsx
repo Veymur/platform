@@ -14,6 +14,8 @@ export function RecorderStatus({ snapshot }: { snapshot: RecorderSnapshot | null
     <Text>Active time: {Math.floor(snapshot.activeMs / 1000)} s</Text>
     <Text>Saved HR: {snapshot.hrCount} · GPS: {snapshot.gpsCount}</Text>
     <Text>GPS: {snapshot.gpsStatus}</Text>
+    <Text>Range alerts: {snapshot.alertsStatus}</Text>
+    {snapshot.storageWarning && <Text accessibilityRole="alert">Low storage space. Finish and export the available recording.</Text>}
     <Text>Last commit: {snapshot.lastCommitUtcMs === null ? 'none' : new Date(snapshot.lastCommitUtcMs).toLocaleTimeString()}</Text>
     <Text>Recovered interrupted recordings: {snapshot.recoveredCount}</Text>
     {snapshot.errorCode && <Text accessibilityRole="alert">{snapshot.errorCode}: {snapshot.errorCode === 'STORAGE_ERROR' ? 'Recording stopped. Export the available portion or retry saving.' : 'Check sensor status and retry the action.'}</Text>}

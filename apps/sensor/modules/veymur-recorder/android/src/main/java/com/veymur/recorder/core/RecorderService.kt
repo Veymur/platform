@@ -26,6 +26,7 @@ data class RecorderSnapshot(
     val connected: String? = null, val battery: Int? = null, val hr: Int? = null,
     val lastHrElapsed: Long = 0, val lastHrElapsedNs: Long = 0, val recording: Boolean = false, val paused: Boolean = false,
     val hrCount: Int = 0, val gpsCount: Int = 0, val activeMs: Long = 0, val lastCommit: Long = 0,
+    val alertsStatus: String = "disabled", val storageWarning: String? = null,
     val revision: Long = 0, val errorCode: String? = null, val recovered: Int = 0, val gpsStatus: String = "Route disabled", val ready: Boolean = false
 )
 
@@ -61,7 +62,14 @@ class RecorderService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var searchJob: Job? = null
     private var lastActivityVisible: Boolean? = null
-    private var selected: String? = null
+    @Volatile private var selected: String? = null
+    @Volatile private var activeSearchId: String? = null
+    private var rangeAlerts: RangeAlerts? = null
+    private var rangeNotifications: RangeAlertNotifications? = null
+    private var alertSegmentStartNs = Long.MAX_VALUE
+    private var gpsExpectedSinceNs = 0L
+    private var lastGpsReceiptNs = 0L
+    private var gpsGap = false
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var routeEnabled = false
     @Volatile private var starting = false
@@ -83,6 +91,10 @@ class RecorderService : Service() {
             val input = locationObservationInput(location)
             enqueue {
                 if (routeEnabled && snapshot.recording && !snapshot.paused) {
+                    if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                        checkGpsAvailability(); return@enqueue
+                    }
+                    if (receipt.elapsed_ns < gpsExpectedSinceNs || (input.elapsed_ns != null && input.elapsed_ns < gpsExpectedSinceNs)) return@enqueue
                     val sample = try { observationNormalizer.gps(input, receipt) }
                     catch (error: InvalidObservation) {
                         record("gps_rejected", JSONObject().put("reason", error.reason)
@@ -98,16 +110,24 @@ class RecorderService : Service() {
                         .put("observed_utc_ms", input.utc_ms ?: JSONObject.NULL)
                         .put("source_elapsed_nanos", input.elapsed_ns ?: JSONObject.NULL).put("mock", input.mock)
                         .put("observation_metadata", observationMetadata(sample.time, sample.quality)))
+                    lastGpsReceiptNs = receipt.elapsed_ns; gpsGap = false
                     snapshot = snapshot.copy(gpsCount = snapshot.gpsCount + 1, gpsStatus = "Saving coordinates")
                 }
             }
         }
         override fun onProviderDisabled(provider: String) = enqueue {
+            if (!routeEnabled || !snapshot.recording || snapshot.paused) return@enqueue
+            gpsGap = true
             snapshot = snapshot.copy(gpsStatus = "GPS disabled; heart rate recording continues")
             record("gps_unavailable", JSONObject().put("provider", provider).put("stream", "gps")
                 .put("quality_flags", org.json.JSONArray(listOf("missing"))))
         }
-        override fun onProviderEnabled(provider: String) = enqueue { snapshot = snapshot.copy(gpsStatus = "Waiting for coordinates") }
+        override fun onProviderEnabled(provider: String) = enqueue {
+            if (routeEnabled && snapshot.recording && !snapshot.paused) {
+                gpsGap = false; gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L
+                snapshot = snapshot.copy(gpsStatus = "Waiting for coordinates")
+            }
+        }
     }
     override fun onBind(intent: Intent) = LocalBinder()
     override fun onCreate() {
@@ -151,7 +171,60 @@ class RecorderService : Service() {
     }
     private val control = RecorderControl({ engine!! }, { snapshot }, { snapshot = it }, System::currentTimeMillis)
     private val processor = PolarRecorderProcessor({ snapshot }, { snapshot = it }, clock, deviceDetails, observationNormalizer, ::record)
-    private fun processPolarInput(event: PolarInputEvent): Boolean = processor.process(event)
+    private fun processPolarInput(event: PolarInputEvent): Boolean {
+        if (session != null && engine?.state == "interrupted") return false
+        if (event.eventType.startsWith("search_")) {
+            if (event.payload().optString("subscription_id") != activeSearchId) return false
+            if (event.eventType in setOf("search_error", "search_ended", "search_completed")) activeSearchId = null
+        } else if (event.deviceId != null && event.deviceId != selected) return false
+        if (event.eventType in setOf("hr", "battery_level") && snapshot.connected != event.deviceId) return false
+        val applied = processor.process(event)
+        if (applied && event.eventType in setOf("disconnected", "bluetooth")) resetRangeAlerts()
+        return applied
+    }
+    private fun resetRangeAlerts() {
+        rangeAlerts?.reset(); rangeNotifications?.clear()
+        alertSegmentStartNs = SystemClock.elapsedRealtimeNanos()
+    }
+    private fun configureRangeAlerts() {
+        rangeNotifications?.clear(); rangeAlerts = null; rangeNotifications = null
+        val preferences = journal!!.localData(JSONObject().put("operation", "preferences"))
+        val settings = preferences["settings"] as? Map<*, *>
+        val alerts = settings?.get("alerts") as? Map<*, *>
+        if (alerts?.get("enabled") != true) { snapshot = snapshot.copy(alertsStatus = "disabled"); return }
+        val ranges = preferences["hr_ranges"] as? Map<*, *>
+        if (settings["hr_ranges_id"] != ranges?.get("id") || ranges == null) {
+            snapshot = snapshot.copy(alertsStatus = "no_selected_ranges"); return
+        }
+        val intervals = (ranges["ranges"] as List<*>).map { value ->
+            val r = value as Map<*, *>
+            AlertRange(r["id"] as String, r["label"] as String, (r["lower_bpm_inclusive"] as? Number)?.toInt(), (r["upper_bpm_exclusive"] as? Number)?.toInt())
+        }
+        if (intervals.isEmpty()) { snapshot = snapshot.copy(alertsStatus = "no_selected_ranges"); return }
+        rangeAlerts = RangeAlerts(RangeAlertConfiguration(intervals, (alerts["debounce_ms"] as Number).toLong(),
+            (alerts["hysteresis_bpm"] as Number).toInt(), (alerts["repeat_ms"] as? Number)?.toLong()))
+        rangeNotifications = RangeAlertNotifications(this, alerts["sound"] == true, alerts["vibration"] == true)
+        snapshot = snapshot.copy(alertsStatus = if (intervals.isEmpty()) "no_selected_ranges" else rangeNotifications!!.status())
+        resetRangeAlerts()
+    }
+    private fun checkGpsAvailability() {
+        if (!routeEnabled || !snapshot.recording || snapshot.paused || gpsGap) return
+        val denied = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+        if (denied || SystemClock.elapsedRealtimeNanos() - maxOf(lastGpsReceiptNs, gpsExpectedSinceNs) > 10_000_000_000L) {
+            gpsGap = true
+            record("gps_unavailable", JSONObject().put("reason", if (denied) "permission_denied" else "coordinates_stale"))
+            snapshot = snapshot.copy(gpsStatus = if (denied) "Location permission denied; heart rate recording continues" else "No recent coordinates; heart rate recording continues")
+        }
+    }
+    private fun updateRangeAlerts() {
+        val alerts = rangeAlerts ?: return
+        val now = SystemClock.elapsedRealtimeNanos()
+        snapshot = snapshot.copy(alertsStatus = rangeNotifications!!.status())
+        val current = snapshot.heartRateAt(now)
+        val bpm = current.value.takeIf { snapshot.recording && !snapshot.paused && snapshot.lastHrElapsedNs >= alertSegmentStartNs }
+        if (bpm == null) { alerts.sample(null, now / 1_000_000); rangeNotifications?.clear(); return }
+        alerts.sample(bpm, now / 1_000_000)?.let { rangeNotifications?.show(it) }
+    }
     private val tick = object : Runnable {
         override fun run() {
             if (shuttingDown) return
@@ -180,31 +253,38 @@ class RecorderService : Service() {
                         journal!!.updateState(it, if (snapshot.paused) "paused" else "recording", active)
                         snapshot = snapshot.copy(activeMs = active, lastCommit = System.currentTimeMillis())
                     }
-                    if (filesDir.usableSpace < 20L * 1024 * 1024) {
+                    val space = filesDir.usableSpace
+                    snapshot = snapshot.copy(storageWarning = if (space < 50L * 1024 * 1024) "low_space" else null)
+                    checkGpsAvailability()
+                    if (space < 20L * 1024 * 1024) {
                         record("low_storage", JSONObject())
                         finishOnWorker("Low storage. Available recording saved")
                     }
                 } catch (e: Exception) { fail(e) }
             }
+            updateRangeAlerts()
             publish()
             worker.postDelayed(this, 1000)
         }
     }
     private fun enqueue(action: () -> Unit) { worker.post { try { action() } catch (e: Exception) { fail(e) }; publish() } }
     private fun fail(error: Exception) {
-        engine?.failed()
+        engine?.failed(); resetRangeAlerts()
         snapshot = snapshot.copy(errorCode = "STORAGE_ERROR", recording = false, paused = false, ready = snapshot.ready,
             status = "Local storage error (${error.javaClass.simpleName}). Recording stopped; the saved portion is available for export")
         main.post { stopResources() }
     }
     private fun record(kind: String, payload: JSONObject) {
+        // Once storage fails, no later callback/lifecycle event may move the saved cutoff.
+        if (engine?.state !in setOf("recording", "paused")) return
         session?.let { journal!!.append(it, kind, payload); snapshot = snapshot.copy(lastCommit = System.currentTimeMillis()) }
     }
     private fun search() {
-        if (snapshot.recording || starting) throw RecorderError("INVALID_STATE", "Recording is active")
+        if (snapshot.recording || starting || session != null) throw RecorderError("INVALID_STATE", "Finish the current session before searching")
         searchJob?.cancel()
-        enqueue { snapshot = snapshot.copy(devices = emptyList(), status = "Searching for Verity Sense…") }
+        enqueue { snapshot = snapshot.copy(devices = emptyList(), errorCode = null, status = "Searching for Verity Sense…") }
         val subscriptionId = java.util.UUID.randomUUID().toString()
+        activeSearchId = subscriptionId
         searchJob = scope.launch {
             try {
                 withTimeout(15000) {
@@ -220,14 +300,23 @@ class RecorderService : Service() {
             }
         }
     }
-    private fun cancelSearch() { searchJob?.cancel(); enqueue { snapshot = snapshot.copy(status = "Search stopped") } }
+    private fun cancelSearch() { activeSearchId = null; searchJob?.cancel(); enqueue { snapshot = snapshot.copy(status = "Search stopped") } }
     private fun connect(id: String) {
-        if (snapshot.recording || starting) throw RecorderError("INVALID_STATE", "Recording is active")
+        if (session != null && engine?.state == "interrupted") throw RecorderError("INVALID_STATE", "Save the available portion before reconnecting")
+        if ((snapshot.recording || starting || session != null) && (id != selected || snapshot.connected != null))
+            throw RecorderError("INVALID_STATE", "Only reconnecting the selected sensor is allowed during a session")
+        if (id != selected && snapshot.devices.none { it.deviceId == id })
+            throw RecorderError("INVALID_ARGUMENT", "Search and explicitly select a listed sensor")
         cancelSearch()
         try {
+            val switching = selected != id
             selected?.takeIf { it != id }?.let { api.disconnectFromDevice(it) }
             selected = id
-            enqueue { snapshot = snapshot.copy(connected = null, hr = null, battery = null) }
+            enqueue {
+                if (switching) deviceDetails.clear()
+                resetRangeAlerts()
+                snapshot = snapshot.copy(connected = null, hr = null, battery = null, errorCode = null)
+            }
             api.connectToDevice(id)
         } catch (e: Exception) { throw RecorderError("CONNECTION_ERROR", "Unable to connect to selected sensor") }
     }
@@ -240,8 +329,11 @@ class RecorderService : Service() {
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             holdResources()
             workerCommand(done, command) {
+                configureRangeAlerts()
                 val id = control.start(route, routeEnabled, JSONObject().put("route_requested", route).put("route_enabled", routeEnabled)
                     .put("device_info", JSONObject(deviceDetails.toMap())).put("phone_battery_percent", phoneBattery()))
+                alertSegmentStartNs = SystemClock.elapsedRealtimeNanos()
+                gpsExpectedSinceNs = alertSegmentStartNs; lastGpsReceiptNs = 0L; gpsGap = false
                 main.post { starting = false; if (routeEnabled && snapshot.recording && !snapshot.paused) requestGps() }
                 mapOf("sessionId" to id)
             }
@@ -257,7 +349,7 @@ class RecorderService : Service() {
     }
     private fun requestGps() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            enqueue { snapshot = snapshot.copy(gpsStatus = "Precise location permission not granted") }; return
+            enqueue { gpsGap = false; checkGpsAvailability() }; return
         }
         try { gps.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 0f, locations, Looper.getMainLooper()) }
         catch (e: Exception) { enqueue { snapshot = snapshot.copy(gpsStatus = "Route unavailable: ${e.message}"); record("gps_error", JSONObject().put("type", e.javaClass.simpleName)) } }
@@ -266,9 +358,10 @@ class RecorderService : Service() {
         val hadSession = session != null
         finishing = true
         if (hadSession) { snapshot = snapshot.copy(status = "Saving recording…"); publish() }
+        resetRangeAlerts()
         val id = try { control.finish(phoneBattery(), message) } catch (e: Exception) { finishing = false; throw e }
         main.post { stopResources(); finishing = false }
-        return mapOf("sessionId" to id, "state" to "completed")
+        return mapOf("sessionId" to id, "state" to engine!!.state)
     }
     fun execute(name: String, argument: String? = null, route: Boolean = false, done: (Result<Map<String, Any?>>) -> Unit) {
         val command = if (name in setOf("start", "pause", "resume", "finish")) polarInputs.command(name, route) else null
@@ -310,7 +403,21 @@ class RecorderService : Service() {
                             "localData" -> {
                                 try {
                                     if (argument == null || argument.length > 65536) throw RecorderError("INVALID_ARGUMENT", "Invalid local request")
-                                    journal!!.localData(JSONObject(argument))
+                                    val request = JSONObject(argument)
+                                    val result = journal!!.localData(request)
+                                    if (request.optString("operation") == "saveSettings") {
+                                        val alerts = request.getJSONObject("value").getJSONObject("alerts")
+                                        if (!alerts.getBoolean("enabled")) {
+                                            rangeAlerts = null; rangeNotifications?.clear(); rangeNotifications = null
+                                            snapshot = snapshot.copy(alertsStatus = "disabled")
+                                        } else if (rangeAlerts != null) {
+                                            // Delivery/quiet choices take effect immediately; range rules stay session-scoped.
+                                            rangeNotifications?.clear()
+                                            rangeNotifications = RangeAlertNotifications(this, alerts.getBoolean("sound"), alerts.getBoolean("vibration"))
+                                            snapshot = snapshot.copy(alertsStatus = rangeNotifications!!.status())
+                                        }
+                                    }
+                                    result
                                 } catch (e: RecorderError) { throw e }
                                 catch (e: IllegalArgumentException) { throw RecorderError("INVALID_ARGUMENT", "Invalid local request") }
                                 catch (e: org.json.JSONException) { throw RecorderError("INVALID_ARGUMENT", "Invalid local request") }
@@ -318,11 +425,29 @@ class RecorderService : Service() {
                             }
                             "getSnapshot" -> dto()
                             "pause", "resume" -> {
+                                val previousState = engine!!.state
                                 control.pauseOrResume(name)
-                                main.post { if (snapshot.paused) gps.removeUpdates(locations) else if (routeEnabled && snapshot.recording) requestGps() }
+                                if (previousState != engine!!.state) {
+                                    resetRangeAlerts()
+                                    gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L; gpsGap = false
+                                    snapshot = snapshot.copy(gpsStatus = if (!routeEnabled) "Route disabled" else if (snapshot.paused) "Paused" else "Waiting for coordinates")
+                                }
+                                main.post {
+                                    if (snapshot.paused) gps.removeUpdates(locations) else if (routeEnabled && snapshot.recording) requestGps()
+                                    if (snapshot.recording || diagnosticOwnsService()) refreshForegroundNotification()
+                                }
                                 mapOf("sessionId" to engine!!.id, "state" to engine!!.state)
                             }
                             "finish" -> finishOnWorker("Recording saved. Ready to export")
+                            "exportSession" -> {
+                                try {
+                                    if (argument == null || argument.length > 65536) throw RecorderError("INVALID_ARGUMENT", "Invalid export request")
+                                    journal!!.exportUserFile(JSONObject(argument))
+                                } catch (e: RecorderError) { throw e }
+                                catch (e: IllegalArgumentException) { throw RecorderError("INVALID_ARGUMENT", "Invalid export request") }
+                                catch (e: org.json.JSONException) { throw RecorderError("INVALID_ARGUMENT", "Invalid export request") }
+                                catch (e: Exception) { throw RecorderError("STORAGE_ERROR", "Export could not be prepared; saved sessions and recording are not affected") }
+                            }
                             "exportLatest" -> {
                                 val id = journal!!.latest() ?: throw RecorderError("NO_SESSIONS", "No saved sessions")
                                 mapOf("path" to journal!!.export(id).absolutePath)
@@ -362,6 +487,8 @@ class RecorderService : Service() {
             "devices" to snapshot.devices.map { mapOf("id" to it.deviceId, "name" to it.name, "address" to it.address) },
             "hrCount" to snapshot.hrCount, "gpsCount" to snapshot.gpsCount, "activeMs" to snapshot.activeMs,
             "lastCommitUtcMs" to snapshot.lastCommit.takeIf { it > 0 }, "gpsStatus" to snapshot.gpsStatus,
+            "alertsStatus" to snapshot.alertsStatus, "storageWarning" to snapshot.storageWarning,
+            "selectedDeviceId" to selected, "discoveryActive" to (activeSearchId != null),
             "routeEnabled" to routeEnabled, "recoveredCount" to snapshot.recovered, "errorCode" to snapshot.errorCode, "diagnostic" to diagnosticDto())
     }
     private fun phoneBattery(): Int = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -472,10 +599,18 @@ class RecorderService : Service() {
         }
     }
     private fun foregroundNotification(): Notification = Notification.Builder(this, "recorder")
-            .setContentTitle(if (diagnosticOwnsService()) "Veymur: diagnostic capture enabled" else "Veymur: local recording in progress")
+            .setContentTitle(when {
+                snapshot.paused -> "Veymur: recording paused"
+                snapshot.recording || starting -> "Veymur: local recording in progress"
+                else -> "Veymur: diagnostic capture enabled"
+            })
             .setContentText("${if (snapshot.recording || starting) "Recording" else "Sensor diagnostics"} saved on this phone")
             .setSmallIcon(android.R.drawable.ic_media_play).setOngoing(true)
             .setContentIntent(PendingIntent.getActivity(this, 0, requireNotNull(packageManager.getLaunchIntentForPackage(packageName)), PendingIntent.FLAG_IMMUTABLE)).build()
+    private fun refreshForegroundNotification() {
+        try { getSystemService(NotificationManager::class.java).notify(1, foregroundNotification()) }
+        catch (_: SecurityException) { /* Notification denial must not stop local recording. */ }
+    }
     private fun holdResources() {
         startForeground(1, foregroundNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
             (if (routeEnabled && (snapshot.recording || starting)) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0))
@@ -488,7 +623,7 @@ class RecorderService : Service() {
     private fun stopResources() {
         if (!snapshot.recording) gps.removeUpdates(locations)
         if (snapshot.recording || diagnosticOwnsService()) {
-            getSystemService(NotificationManager::class.java).notify(1, foregroundNotification())
+            refreshForegroundNotification()
             return
         }
         wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null
@@ -497,6 +632,7 @@ class RecorderService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_NOT_STICKY
     override fun onDestroy() {
         shuttingDown = true
+        rangeNotifications?.clear()
         unregisterReceiver(screenReceiver)
         scope.cancel(); if (::api.isInitialized) api.shutDown(); gps.removeUpdates(locations)
         wakeLock?.let { if (it.isHeld) it.release() }

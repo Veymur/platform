@@ -35,7 +35,8 @@ class RecorderControl(
         val id = engine.finish(battery)
         val before = read()
         write(before.copy(recording = false, paused = false, errorCode = null, activeMs = engine.clock.activeMs(),
-            lastCommit = if (hadSession) utcNow() else before.lastCommit, status = message))
+            lastCommit = if (hadSession) utcNow() else before.lastCommit,
+            status = if (engine.state == "interrupted") "Available portion saved on this phone; recording was interrupted" else message))
         return id
     }
 }

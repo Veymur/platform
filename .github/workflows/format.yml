@@ -1,0 +1,26 @@
+name: Formatting
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  changed-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/sensor/.nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm install --global npm@10.9.7
+      - run: npm ci
+      - name: Check changed files
+        env:
+          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$FORMAT_BASE" || "$FORMAT_BASE" =~ ^0+$ ]]; then
+            FORMAT_BASE="$(git rev-parse --verify HEAD^ 2>/dev/null || git hash-object -w -t tree --stdin </dev/null)"
+          fi
+          npm run format:check:changed -- --base "$FORMAT_BASE"

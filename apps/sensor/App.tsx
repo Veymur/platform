@@ -1,2 +1,2 @@
-import { DiagnosticRecorderScreen } from './src/screens/DiagnosticRecorderScreen';
-export default function App() { return <DiagnosticRecorderScreen />; }
+import { SensorApp } from './src/SensorApp';
+export default function App() { return <SensorApp />; }

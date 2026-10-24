@@ -474,3 +474,36 @@ token was not changed here.
 NOT RUN: TalkBack navigation by a person, S03–S05 with a real sensor (live shape,
 network status in S04, export share sheet), physical phones and iOS. Stage 4
 remains open until the local flow is accepted on hardware.
+
+## Hardware run on Galaxy A23 without GPS (2026-10-22/23)
+
+Diagnostic embedded-JS APK on bridge v9 (SHA-256
+`f9a77d861cf1900e3db8377648f0e645fb47cd52d56ba4480803b63966eb4eb7`, test-signed),
+installed with `adb install -r` over the existing D8 build without clearing data.
+Samsung SM-A235F, Android 14/API 34; Polar Verity Sense firmware 0.1.6 / 3.0.16,
+Polar SDK 8.4.0. Exports were checked with `analyze_export.py`,
+`validate_polar_diagnostic.py` and `verify_user_export.py`; archives stay local and
+ignored by Git.
+
+PASS: offline cold start and history after relaunch; 16 min screen lock with USB
+unplugged (max HR gap 1.1 s); background with notifications denied; sensor
+switched off and automatically reconnected without a new start (HR=0 rejected,
+gap kept as a gap); pause with no HR inside and two segments; force-stop with one
+`interrupted` recovery and no auto-resume; timezone change with steady UTC and
+active time. Permission denial passed by operator observation only. Upgrade over
+the old database opened legacy sessions as `legacy_v1` with an explicit
+unavailable summary; no pre-upgrade copy existed for a byte comparison. Battery:
+one run, about 110 mAh/h for the whole phone over 49 min, no baseline.
+
+Fixed during the run: sharing from RN `Modal` windows (Recorder diagnostics, S05
+export dialog) failed with `NO_ACTIVITY` because the modal owns window focus;
+`shareExport` and `ensureActivity` now use the host-visibility guard. AVD:
+93 instrumentation tests without failures, 2 expected external-protocol skips.
+`verify_user_export.py` now accepts a zero-length usable interval produced by two
+observations less than 1 ms apart.
+
+Open: Polar SDK delivers every `hrNotificationReceived` (and `disconnected`) twice
+with identical payload, doubling HR rows without changing coverage or mean; the S04
+timer can skip a second because it renders 1 s native snapshots. NOT RUN: GPS
+scenarios, system clock change, battery baseline, iOS and other phones. Full
+protocol and results: `docs/recorder-validation.md` (local, not tracked).

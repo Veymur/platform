@@ -34,11 +34,25 @@ class VerifyUserExportTest(unittest.TestCase):
             {"format": "csv", "rows": 3, "usable_rows": 2, "segments": 2, "covered_s": 6.0, "gaps_between_usable_rows": 1},
         )
 
+    def test_paired_observations_within_one_millisecond_keep_a_zero_length_first_interval(self):
+        path = self.write(
+            "paired-pulse.csv",
+            HEADER
+            + "\ns,1,r1,2026-10-22T13:07:18.897Z,0.438,58,true,0.438,"
+            + "\ns,1,r2,2026-10-22T13:07:18.898Z,0.438,58,true,1.473,"
+            + "\ns,1,r3,2026-10-22T13:07:19.932Z,1.473,58,true,1.474,\n",
+        )
+        summary = verifier.verify_pulse_csv(path)
+        self.assertEqual(summary["usable_rows"], 3)
+        self.assertEqual(summary["covered_s"], 1.036)
+        self.assertEqual(summary["gaps_between_usable_rows"], 0)
+
     def test_pulse_rejects_overlap_missing_reason_and_wrong_header(self):
         overlap = HEADER + "\ns,1,r1,2026-10-19T10:00:00Z,0,80,true,5,\ns,1,r2,2026-10-19T10:00:01Z,1,81,true,2,\n"
         no_reason = HEADER + "\ns,1,r1,2026-10-19T10:00:00Z,0,80,false,,\n"
         local_time = HEADER + "\ns,1,r1,2026-10-19T10:00:00,0,80,true,1,\n"
-        for text in (overlap, no_reason, local_time, "wrong\n"):
+        reversed_interval = HEADER + "\ns,1,r1,2026-10-19T10:00:00Z,2,80,true,1,\n"
+        for text in (overlap, no_reason, local_time, reversed_interval, "wrong\n"):
             with self.assertRaises(verifier.ExportError):
                 verifier.verify_pulse_csv(self.write("b-pulse.csv", text))
 

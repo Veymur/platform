@@ -217,6 +217,14 @@ test("live chart shows only fresh readings in its window", () => {
   });
 });
 
+test("displayed active time interpolates only while recording and is capped", () => {
+  assert.equal(m.displayActiveMs(1000, true, 5000, 5250), 1250);
+  assert.equal(m.displayActiveMs(1000, true, 5000, 8000), 2500);
+  assert.equal(m.displayActiveMs(1000, false, 5000, 8000), 1000);
+  assert.equal(m.displayActiveMs(1000, true, 6000, 5000), 1000);
+  assert.equal(m.displayActiveMs(1000, true, 5000, 5500, 0), 1000);
+});
+
 test("formatting keeps unknown values as text and uses the selected units", () => {
   assert.equal(m.formatClock(3725000), "01:02:05");
   assert.equal(m.formatDuration(45000), "45 s");

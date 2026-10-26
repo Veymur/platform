@@ -502,8 +502,15 @@ export dialog) failed with `NO_ACTIVITY` because the modal owns window focus;
 `verify_user_export.py` now accepts a zero-length usable interval produced by two
 observations less than 1 ms apart.
 
-Open: Polar SDK delivers every `hrNotificationReceived` (and `disconnected`) twice
-with identical payload, doubling HR rows without changing coverage or mean; the S04
-timer can skip a second because it renders 1 s native snapshots. NOT RUN: GPS
-scenarios, system clock change, battery baseline, iOS and other phones. Full
-protocol and results: `docs/recorder-validation.md` (local, not tracked).
+Fixed after the run: Polar SDK 8.4.0 delivers `hrNotificationReceived` and
+`disconnected` twice with identical payload. `PolarRecorderProcessor` now ignores a
+second HR with the same device/payload within 20 ms and treats a repeated disconnect
+as idempotent; the raw diagnostic capture still retains both inputs, and existing
+sessions are not rewritten. S04 now interpolates the displayed active time between
+native snapshots (display-only; native remains authoritative). `payload.active_ms`
+is documented as a chart projection while summary/export use receipt time and the
+session timeline.
+
+NOT RUN: GPS scenarios, system clock change, battery baseline, iOS and other
+phones. Full protocol and results: `docs/recorder-validation.md` (local, not
+tracked).

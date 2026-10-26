@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import {
   Action,
@@ -16,15 +16,18 @@ import { useTheme } from "../../ui/Theme";
 import { useProduct } from "../../product/ProductContext";
 import { localDataClient } from "../../recorder/LocalDataClient";
 import {
+  displayActiveMs,
   formatAge,
   formatClock,
   formatTime,
   frozenLiveNow,
   liveChartColumns,
+  monotonicNowMs,
   rangeContaining,
   withoutErrorCode,
   type UserRange,
 } from "../../product/sessionMath";
+import type { RecorderSnapshot } from "../../recorder/types";
 import { Muted, OpenSettingsAction } from "./shared";
 
 function useSessionRanges(
@@ -55,6 +58,35 @@ function useSessionRanges(
   }, [sessionId]);
   return ranges;
 }
+/** Display-only smoothing between native snapshots; pause/finish use the native value. */
+function useDisplayActiveMs(
+  activeMs: number,
+  sessionState: RecorderSnapshot["sessionState"],
+): number {
+  const anchor = useRef({ activeMs, at: monotonicNowMs() });
+  const lastState = useRef(sessionState);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (
+      activeMs !== anchor.current.activeMs ||
+      sessionState !== lastState.current
+    ) {
+      anchor.current = { activeMs, at: monotonicNowMs() };
+      lastState.current = sessionState;
+    }
+    setTick((value) => value + 1);
+    if (sessionState !== "recording") return;
+    const timer = setInterval(() => setTick((value) => value + 1), 250);
+    return () => clearInterval(timer);
+  }, [activeMs, sessionState]);
+  return displayActiveMs(
+    anchor.current.activeMs,
+    sessionState === "recording",
+    anchor.current.at,
+    monotonicNowMs(),
+  );
+}
+
 const titles = {
   recording: "Recording",
   paused: "Paused",
@@ -69,8 +101,9 @@ export function SessionScreen() {
   const { snapshot, controller, pending, error } = recorder;
   const [confirmFinish, setConfirmFinish] = useState(false);
   const ranges = useSessionRanges(snapshot?.sessionId ?? null);
+  const state = snapshot?.sessionState ?? "preparation";
+  const shownActiveMs = useDisplayActiveMs(snapshot?.activeMs ?? 0, state);
   if (!snapshot) return null;
-  const state = snapshot.sessionState;
   const busy = pending !== null;
   const interrupted = state === "interrupted";
   const paused = state === "paused";
@@ -88,7 +121,7 @@ export function SessionScreen() {
       <Heading>{title}</Heading>
       <View
         accessible
-        accessibilityLabel={`Active time ${formatClock(snapshot.activeMs)}`}
+        accessibilityLabel={`Active time ${formatClock(shownActiveMs)}`}
       >
         <Label
           style={{
@@ -97,7 +130,7 @@ export function SessionScreen() {
             fontWeight: "600",
           }}
         >
-          {formatClock(snapshot.activeMs)}
+          {formatClock(shownActiveMs)}
         </Label>
         <Muted>active time{paused ? " · paused, not counting" : ""}</Muted>
       </View>

@@ -143,6 +143,10 @@ export function editableSettings(settings: EditableSettings): EditableSettings {
   };
 }
 
+/**
+ * Chart-only projection. `payload.active_ms` is the worker processing time;
+ * native summary/export use receipt elapsed time and session timeline.
+ */
 export type HrSample = {
   activeMs: number;
   bpm: number | null;
@@ -241,6 +245,40 @@ export function sessionChartColumns(
 }
 
 export type LiveSample = { atMs: number; bpm: number | null };
+
+/**
+ * Display-only interpolation for the S04 counter. The native snapshot remains
+ * authoritative: this value is never persisted or used for aggregates.
+ */
+export function displayActiveMs(
+  activeMs: number,
+  recording: boolean,
+  anchorAtMs: number,
+  nowMs: number,
+  maxExtrapolationMs = 1500,
+): number {
+  if (
+    !recording ||
+    !Number.isFinite(activeMs) ||
+    !Number.isFinite(anchorAtMs) ||
+    !Number.isFinite(nowMs)
+  )
+    return activeMs;
+  const elapsed = nowMs - anchorAtMs;
+  if (elapsed <= 0) return activeMs;
+  return activeMs + Math.min(elapsed, Math.max(0, maxExtrapolationMs));
+}
+
+/** Monotonic clock for display interpolation; wall-clock changes do not affect it. */
+export function monotonicNowMs(): number {
+  const clock = (
+    globalThis as typeof globalThis & {
+      performance?: { now?: () => number };
+    }
+  ).performance;
+  return typeof clock?.now === "function" ? clock.now() : Date.now();
+}
+
 export function appendLiveSample(
   samples: readonly LiveSample[],
   sample: LiveSample,

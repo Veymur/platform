@@ -19,6 +19,7 @@ import {
   displayActiveMs,
   formatAge,
   formatClock,
+  formatDistance,
   formatTime,
   frozenLiveNow,
   liveChartColumns,
@@ -28,6 +29,7 @@ import {
   type UserRange,
 } from "../../product/sessionMath";
 import type { RecorderSnapshot } from "../../recorder/types";
+import { fonts } from "../../ui/tokens";
 import { Muted, OpenSettingsAction } from "./shared";
 
 function useSessionRanges(
@@ -96,8 +98,15 @@ const titles = {
 
 export function SessionScreen() {
   const { colors } = useTheme();
-  const { recorder, liveSamples, nowMs, timeZone, network, reduceMotion } =
-    useProduct();
+  const {
+    recorder,
+    liveSamples,
+    nowMs,
+    timeZone,
+    network,
+    reduceMotion,
+    units,
+  } = useProduct();
   const { snapshot, controller, pending, error } = recorder;
   const [confirmFinish, setConfirmFinish] = useState(false);
   const ranges = useSessionRanges(snapshot?.sessionId ?? null);
@@ -125,9 +134,9 @@ export function SessionScreen() {
       >
         <Label
           style={{
+            fontFamily: fonts.display,
             fontSize: 40,
             fontVariant: ["tabular-nums"],
-            fontWeight: "600",
           }}
         >
           {formatClock(shownActiveMs)}
@@ -140,8 +149,11 @@ export function SessionScreen() {
             accessible
             accessibilityLabel={`Pulse ${snapshot.hr} beats per minute${position ? `, ${position.label}` : ""}`}
           >
-            <Label style={{ fontSize: 56, fontWeight: "700" }}>
-              {snapshot.hr} <Label style={{ fontSize: 20 }}>bpm</Label>
+            <Label style={{ fontFamily: fonts.displayLight, fontSize: 56 }}>
+              {snapshot.hr}{" "}
+              <Label style={{ fontFamily: fonts.mono, fontSize: 20 }}>
+                bpm
+              </Label>
             </Label>
             {position && (
               <Label style={{ color: colors.tide, fontWeight: "600" }}>
@@ -199,7 +211,22 @@ export function SessionScreen() {
           value={snapshot.routeEnabled ? snapshot.gpsStatus : "Off"}
           note={
             snapshot.routeEnabled
-              ? `${snapshot.gpsCount} points saved. Distance is shown in the summary.`
+              ? `${snapshot.gpsCount} points saved.`
+              : undefined
+          }
+        />
+        <Detail
+          title="Distance"
+          value={
+            !snapshot.routeEnabled
+              ? "Route off"
+              : snapshot.gpsDistanceM === null
+                ? "Waiting for GPS"
+                : formatDistance(snapshot.gpsDistanceM, units)
+          }
+          note={
+            snapshot.routeEnabled && snapshot.gpsDistanceM === null
+              ? "Distance appears after the first usable GPS segment."
               : undefined
           }
         />

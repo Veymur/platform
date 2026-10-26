@@ -9,21 +9,44 @@ import {
   TextInput,
   View,
   type TextProps,
+  type TextStyle,
 } from "react-native";
 import { useInsets } from "./Insets";
 import { useTheme } from "./Theme";
-import { radius, spacing } from "./tokens";
+import { fonts, radius, spacing } from "./tokens";
+
+/** Map weight to a bundled static face; do not fake weights with a missing face. */
+function labelStyle(style: TextProps["style"]): TextStyle {
+  const flat = (StyleSheet.flatten(style) ?? {}) as TextStyle;
+  const weight = flat.fontWeight;
+  const family =
+    flat.fontFamily ??
+    (weight === "700" || weight === 700 || weight === "bold"
+      ? fonts.uiBold
+      : weight === "600" || weight === 600
+        ? fonts.uiSemibold
+        : weight === "500" || weight === 500
+          ? fonts.uiMedium
+          : fonts.ui);
+  const rest: TextStyle = { ...flat };
+  delete rest.fontWeight;
+  return { ...rest, fontFamily: family };
+}
+
 export function Label({ style, ...props }: TextProps) {
   const { colors } = useTheme();
   return (
-    <Text {...props} style={[{ color: colors.ink, fontSize: 16 }, style]} />
+    <Text
+      {...props}
+      style={[{ color: colors.ink, fontSize: 16 }, labelStyle(style)]}
+    />
   );
 }
 export function Heading({ children }: PropsWithChildren) {
   return (
     <Label
       accessibilityRole="header"
-      style={{ fontSize: 28, fontWeight: "600" }}
+      style={{ fontFamily: fonts.display, fontSize: 28 }}
     >
       {children}
     </Label>
@@ -242,7 +265,9 @@ export function Detail({
       accessibilityLabel={`${title}: ${value}${note ? `. ${note}` : ""}`}
       style={{ gap: spacing.unit }}
     >
-      <Label style={{ color: colors["ink-3"] }}>{title}</Label>
+      <Label style={{ color: colors["ink-3"], fontFamily: fonts.mono }}>
+        {title}
+      </Label>
       <Label style={{ fontSize: 20, fontWeight: "600" }}>{value}</Label>
       {note && <Label style={{ color: colors["ink-2"] }}>{note}</Label>}
     </View>
@@ -348,6 +373,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
     borderRadius: radius.small,
+    fontFamily: fonts.ui,
     fontSize: 18,
   },
   card: {

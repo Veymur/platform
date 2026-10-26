@@ -39,7 +39,7 @@ class RecorderModule : Module() {
         Name("VeymurRecorder")
         Events("onSnapshot", "onNetwork")
         AsyncFunction("getModuleInfo") {
-            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 9, "recorderImplemented" to true)
+            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 10, "recorderImplemented" to true)
         }
         AsyncFunction("ensureActivity") { promise: Promise -> main.post {
             try { requireRecorderActionActivity(appContext.currentActivity, hostVisible); promise.resolve(mapOf("available" to true)) }

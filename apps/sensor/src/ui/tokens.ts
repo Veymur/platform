@@ -32,7 +32,7 @@ export const dark = {
   "tide-mark": "#22a090",
   "tide-wash": "#12302c",
   solid: "#1a7d70",
-  "solid-press": "#1f8e7f",
+  "solid-press": "#176f63",
   "on-solid": "#ffffff",
   ember: "#f2a56e",
   "ember-wash": "#3a2415",
@@ -40,6 +40,18 @@ export const dark = {
   "dusk-wash": "#1b2740",
 } as const;
 export type Palette = { [K in keyof typeof light]: string };
+export const fonts = {
+  display: "BricolageGrotesque_460",
+  displayLight: "BricolageGrotesque_300",
+  ui: "InstrumentSans_400",
+  uiMedium: "InstrumentSans_500",
+  uiSemibold: "InstrumentSans_600",
+  uiBold: "InstrumentSans_700",
+  mono: "DMMono_400",
+  monoMedium: "DMMono_500",
+} as const;
+export type FontFamily = (typeof fonts)[keyof typeof fonts];
+
 export const spacing = {
   unit: 4,
   gap: 8,

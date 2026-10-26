@@ -51,6 +51,7 @@ const dto = (revision = 1) => ({
   activeMs: 0,
   lastCommitUtcMs: null,
   gpsStatus: "Route disabled",
+  gpsDistanceM: null,
   routeEnabled: false,
   recoveredCount: 0,
   errorCode: null,
@@ -144,10 +145,16 @@ test("stale HR stays null; malformed, missing and zero values are rejected; nati
   assert.equal(decoded.hr, null);
   assert.equal("key" in decoded, false);
   assert.equal("rawRecords" in decoded, false);
+  assert.equal(
+    decodeSnapshot({ ...dto(), gpsDistanceM: 12.5 }).gpsDistanceM,
+    12.5,
+  );
   for (const bad of [
     { ...stale, hr: 80 },
     { ...dto(), hr: 0 },
     { ...dto(), activeMs: undefined },
+    { ...dto(), gpsDistanceM: -1 },
+    { ...dto(), gpsDistanceM: undefined },
     { ...dto(), revision: -1 },
     { ...dto(), sessionState: { toString: () => "paused" } },
     {

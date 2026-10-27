@@ -11,7 +11,7 @@ import {
 
 export type ShapeState = readonly ChartColumn[] | "too_long" | "unavailable";
 const maxShapePages = 30;
-const shapeColumns = 36;
+const shapeColumns = 48;
 const shapes = new Map<string, ShapeState>();
 
 async function loadShape(item: SavedSession): Promise<ShapeState> {

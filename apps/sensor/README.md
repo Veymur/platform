@@ -575,3 +575,20 @@ Cloud sync remains out of this integration.
 
 Checks: same typecheck, lint, 70 JS tests, Prettier and Android export. Device
 screenshots, chart scrubbing and real-session visual checks were NOT RUN.
+
+## H01–P01 screen pass and P01 sub-screens (2026-10-27)
+
+H01 now uses filled session prints as row thumbnails, a title with duration,
+date, On phone / Not uploaded marks, average pulse from the loaded shape, and
+a chevron. The empty state has the contour illustration and a direct Record
+action. Pagination, cleanup retry and interrupted-session marks remain.
+
+P01 follows the profile row layout: Guest card with a small Sign in button,
+Cloud sync, Range alerts, Appearance with a theme chip, Text size, Overview,
+and How your data is stored. Units, time zone and theme editing moved into the
+Appearance & display sub-screen; Recorder diagnostics is reachable from the
+storage sheet. Range alerts use the updated range sheet with From/To bpm fields,
+an inline validation error and a Vibration/Sound/Silent segmented control.
+
+Checks: typecheck, lint, 70 JS tests, Prettier and Android export passed.
+Device visual checks, TalkBack and the real picker/permission flows were NOT RUN.

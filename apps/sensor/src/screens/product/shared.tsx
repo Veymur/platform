@@ -13,9 +13,11 @@ import {
 export function StorageDialog({
   visible,
   onClose,
+  onOpenDiagnostics,
 }: {
   visible: boolean;
   onClose: () => void;
+  onOpenDiagnostics?: () => void;
 }) {
   return (
     <Dialog
@@ -35,6 +37,16 @@ export function StorageDialog({
       <Label>
         • Export and delete stay available even if you never sign in.
       </Label>
+      {onOpenDiagnostics && (
+        <Action
+          title="Recorder diagnostics"
+          variant="secondary"
+          onPress={() => {
+            onClose();
+            onOpenDiagnostics();
+          }}
+        />
+      )}
     </Dialog>
   );
 }

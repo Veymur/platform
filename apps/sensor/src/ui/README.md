@@ -24,8 +24,8 @@ confirmation above the tab bar. `Grain.tsx` draws the repeating paper texture be
 screen body. `Contours.tsx` draws the deterministic contour art used by S01–S04, and `AppMark.tsx` is
 the brand mark from the design package. `LineChart.tsx` is the SVG pulse chart with
 grid ticks, shaded range band, gap hatching, isolated points and an optional end dot.
-`PrintShape.tsx` draws the filled radial session print used by S05. `HrColumns.tsx` retains
-the older column projection for screens that have not moved to the line chart yet.
+`PrintShape.tsx` draws the filled radial session print used by S05 and H01. `HrColumns.tsx`
+retains the older column projection for screens that have not moved to the line chart yet.
 `SensorApp.tsx` hosts the stage 4 product screens (see the app README); the diagnostic
 screen stays reachable from Profile.
 No sample HR, GPS, cloud connection or fabricated recordings are shown.

@@ -1,40 +1,14 @@
-import { useEffect, useState } from "react";
-import {
-  Action,
-  Card,
-  Choice,
-  Label,
-  Status,
-  TextField,
-  Warning,
-} from "../../ui/components";
+import { useState } from "react";
+import { Alert, Modal, StyleSheet, View } from "react-native";
+import { Action, Card, Chip, Row } from "../../ui/components";
+import { Icon } from "../../ui/Icon";
 import { AppBar, Screen } from "../../ui/Screen";
+import { useInsets } from "../../ui/Insets";
 import { useTheme } from "../../ui/Theme";
+import { Caption, H3 } from "../../ui/Typography";
 import { useProduct } from "../../product/ProductContext";
-import { deviceTimeZone } from "../../product/usePreferences";
-import {
-  isValidTimeZone,
-  type EditableSettings,
-  type ThemeChoice,
-  type Units,
-} from "../../product/sessionMath";
-import {
-  Muted,
-  rangesSummary,
-  SignInDialog,
-  StorageDialog,
-  Subheading,
-} from "./shared";
-
-const themes: { value: ThemeChoice; title: string }[] = [
-  { value: "system", title: "Follow my phone" },
-  { value: "light", title: "Light" },
-  { value: "dark", title: "Dark" },
-];
-const unitChoices: { value: Units; title: string }[] = [
-  { value: "metric", title: "Kilometres" },
-  { value: "imperial", title: "Miles" },
-];
+import { Muted, rangesSummary, SignInDialog, StorageDialog } from "./shared";
+import { ProfileAppearance } from "./ProfileAppearance";
 
 export function ProfileScreen({
   onEditRanges,
@@ -43,135 +17,132 @@ export function ProfileScreen({
   onEditRanges: () => void;
   onOpenDiagnostics: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const insets = useInsets();
   const { preferences } = useProduct();
   const settings = preferences.preferences?.settings ?? null;
+  const [appearanceVisible, setAppearanceVisible] = useState(false);
   const [storageVisible, setStorageVisible] = useState(false);
   const [signInVisible, setSignInVisible] = useState(false);
-  const [timeZoneText, setTimeZoneText] = useState(settings?.timezone_id ?? "");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    setTimeZoneText(settings?.timezone_id ?? "");
-  }, [settings?.timezone_id]);
-  const save = async (
-    change: (current: EditableSettings) => EditableSettings,
-  ) => {
-    setSaving(true);
-    setError(null);
-    try {
-      await preferences.saveSettings(change);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSaving(false);
-    }
-  };
-  const phoneZone = deviceTimeZone();
-  const saveTimeZone = (value: string) => {
-    if (!isValidTimeZone(value)) {
-      setError("Enter a time zone name such as Europe/Kyiv.");
-      return;
-    }
-    void save((current) => ({ ...current, timezone_id: value.trim() }));
-  };
+  const effectiveDark =
+    settings?.theme === "dark" || (settings?.theme !== "light" && isDark);
+  const themeLabel = effectiveDark ? "Dark theme" : "Light theme";
+  const themeIcon = effectiveDark ? "moon" : "sun";
+  const openOverview = () =>
+    Alert.alert(
+      "Overview",
+      "veymur/cloud is not available in this version yet.",
+    );
   return (
-    <Screen appBar={<AppBar title="Profile" />}>
-      <Card>
-        <Status
-          title="Guest"
-          detail="No account. Everything stays on this phone."
-        />
-        <Action
-          title="Sign in"
-          secondary
+    <Screen
+      appBar={<AppBar title="Profile" />}
+      contentContainerStyle={{ gap: 12 }}
+    >
+      <Card variant="flat">
+        <View style={styles.guestRow}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <H3>Guest</H3>
+            <Muted>No account. Everything stays on this phone.</Muted>
+          </View>
+          <Action
+            title="Sign in"
+            size="sm"
+            variant="secondary"
+            block={false}
+            onPress={() => setSignInVisible(true)}
+          />
+        </View>
+      </Card>
+      <Card variant="flat" style={styles.listCard}>
+        <Row
+          title="Cloud sync"
+          meta="Off · history stays on this phone"
+          lead={<Icon name="cloud" size={20} color={colors["ink-2"]} />}
+          end={<Icon name="chevron-right" size={20} color={colors["ink-3"]} />}
           onPress={() => setSignInVisible(true)}
         />
-        <Label>Cloud sync: Off · history stays on this phone</Label>
-      </Card>
-      <Card>
-        <Subheading>Range alerts</Subheading>
-        <Label>{rangesSummary(preferences.preferences)}</Label>
-        <Action title="Set up range alerts" secondary onPress={onEditRanges} />
-      </Card>
-      <Card>
-        <Subheading>Appearance</Subheading>
-        {themes.map((theme) => (
-          <Choice
-            key={theme.value}
-            title={theme.title}
-            selected={(settings?.theme ?? "system") === theme.value}
-            disabled={saving}
-            onPress={() => {
-              void save((current) => ({ ...current, theme: theme.value }));
-            }}
-          />
-        ))}
-        <Muted>Text size follows your system setting.</Muted>
-      </Card>
-      <Card>
-        <Subheading>Distance units</Subheading>
-        {unitChoices.map((choice) => (
-          <Choice
-            key={choice.value}
-            title={choice.title}
-            selected={(settings?.units ?? "metric") === choice.value}
-            disabled={saving}
-            onPress={() => {
-              void save((current) => ({ ...current, units: choice.value }));
-            }}
-          />
-        ))}
-      </Card>
-      <Card>
-        <Subheading>Time zone</Subheading>
-        <Label>Dates are shown in {settings?.timezone_id ?? phoneZone}.</Label>
-        {settings?.timezone_id !== phoneZone && (
-          <Action
-            title={`Use phone time zone (${phoneZone})`}
-            secondary
-            disabled={saving}
-            onPress={() => saveTimeZone(phoneZone)}
-          />
-        )}
-        <TextField
-          label="Time zone name"
-          value={timeZoneText}
-          onChange={setTimeZoneText}
+        <Row
+          title="Range alerts"
+          meta={rangesSummary(preferences.preferences)}
+          lead={<Icon name="bell" size={20} color={colors["ink-2"]} />}
+          end={<Icon name="chevron-right" size={20} color={colors["ink-3"]} />}
+          onPress={onEditRanges}
         />
-        <Action
-          title="Save time zone"
-          secondary
-          disabled={saving || timeZoneText.trim() === settings?.timezone_id}
-          onPress={() => saveTimeZone(timeZoneText)}
+        <Row
+          title="Appearance"
+          meta={
+            settings?.theme === "system"
+              ? "Follows your phone"
+              : "Set in Appearance"
+          }
+          lead={<Icon name="sun" size={20} color={colors["ink-2"]} />}
+          end={<Chip label={themeLabel} tone="outline" icon={themeIcon} />}
+          onPress={() => setAppearanceVisible(true)}
         />
-      </Card>
-      {error && <Warning title={error} />}
-      <Card>
-        <Subheading>Your data</Subheading>
-        <Action
+        <Row
+          title="Text size"
+          meta="Follows your system setting"
+          lead={<Icon name="text-size" size={20} color={colors["ink-2"]} />}
+        />
+        <Row
+          title="Overview"
+          meta="Opens veymur/cloud in your browser"
+          lead={<Icon name="overview" size={20} color={colors["ink-2"]} />}
+          end={<Icon name="external" size={20} color={colors["ink-3"]} />}
+          onPress={openOverview}
+        />
+        <Row
           title="How your data is stored"
-          secondary
+          lead={<Icon name="lock" size={20} color={colors["ink-2"]} />}
+          end={<Icon name="chevron-right" size={20} color={colors["ink-3"]} />}
           onPress={() => setStorageVisible(true)}
-        />
-        <Muted>To delete a session, open it in History.</Muted>
-        <Action
-          title="Recorder diagnostics"
-          secondary
-          onPress={onOpenDiagnostics}
+          last
         />
       </Card>
-      <Label style={{ color: colors["ink-2"] }}>
+      <Caption style={{ marginTop: 8 }}>
         For adults. veymur/sensor is a wellness log, not a medical device.
-      </Label>
+      </Caption>
       <StorageDialog
         visible={storageVisible}
         onClose={() => setStorageVisible(false)}
+        onOpenDiagnostics={() => {
+          setStorageVisible(false);
+          onOpenDiagnostics();
+        }}
       />
       <SignInDialog
         visible={signInVisible}
         onClose={() => setSignInVisible(false)}
       />
+      <Modal
+        visible={appearanceVisible}
+        animationType="slide"
+        onRequestClose={() => setAppearanceVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            paddingTop: insets.top,
+            backgroundColor: colors.bg,
+          }}
+        >
+          <ProfileAppearance onClose={() => setAppearanceVisible(false)} />
+        </View>
+      </Modal>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  guestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  listCard: {
+    paddingVertical: 0,
+    paddingHorizontal: 20,
+    gap: 0,
+  },
+});

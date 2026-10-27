@@ -785,10 +785,12 @@ export function NumberField({
   label,
   value,
   onChange,
+  unit,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  unit?: string;
 }) {
   const { colors } = useTheme();
   return (
@@ -799,23 +801,31 @@ export function NumberField({
       >
         {label}
       </Label>
-      <TextInput
-        accessibilityLabel={label}
-        accessibilityLabelledBy={label}
-        keyboardType="number-pad"
-        inputMode="numeric"
-        maxLength={3}
-        value={value}
-        onChangeText={onChange}
+      <View
         style={[
-          styles.input,
+          styles.inputUnit,
           {
-            color: colors.ink,
             borderColor: colors.edge,
             backgroundColor: colors.raised,
           },
         ]}
-      />
+      >
+        <TextInput
+          accessibilityLabel={unit ? `${label}, ${unit}` : label}
+          accessibilityLabelledBy={label}
+          keyboardType="number-pad"
+          inputMode="numeric"
+          maxLength={3}
+          value={value}
+          onChangeText={onChange}
+          style={[styles.inputUnitField, { color: colors.ink }]}
+        />
+        {unit && (
+          <Text style={[styles.inputUnitLabel, { color: colors["ink-3"] }]}>
+            {unit}
+          </Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -991,5 +1001,26 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 17,
     lineHeight: 22,
+  },
+  inputUnit: {
+    minHeight: 52,
+    paddingHorizontal: spacing.section,
+    borderWidth: 1.5,
+    borderRadius: radius.medium,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.gap,
+  },
+  inputUnitField: {
+    flex: 1,
+    paddingVertical: 0,
+    fontFamily: fonts.ui,
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  inputUnitLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    lineHeight: 18.2,
   },
 });

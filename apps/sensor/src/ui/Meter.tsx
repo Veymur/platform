@@ -6,14 +6,17 @@ export type MeterTone = "tide" | "ember" | "dusk";
 
 export function Meter({
   segments,
+  label,
 }: {
   segments: readonly { value: number; tone: MeterTone }[];
+  label?: string;
 }) {
   const { colors } = useTheme();
   return (
     <View
       style={[styles.meter, { backgroundColor: colors.raised }]}
       accessibilityRole="image"
+      accessibilityLabel={label}
     >
       {segments
         .filter((segment) => segment.value > 0)
@@ -22,6 +25,7 @@ export function Meter({
             key={`${segment.tone}-${index}`}
             style={{
               flex: Math.max(segment.value, 1),
+              minWidth: 4,
               backgroundColor:
                 segment.tone === "tide"
                   ? colors["tide-mark"]

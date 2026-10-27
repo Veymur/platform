@@ -312,6 +312,25 @@ export function liveChartColumns(
     };
   });
 }
+
+/** Line-chart projection of the live window; null keeps gaps instead of zero. */
+export function liveChartValues(
+  samples: readonly LiveSample[],
+  nowMs: number,
+  windowMs = 90000,
+  count = 90,
+): (number | null)[] {
+  const width = windowMs / count;
+  const start = nowMs - windowMs;
+  return Array.from({ length: count }, (_, column) => {
+    const from = start + column * width;
+    const to = from + width;
+    const latest = samples
+      .filter((sample) => sample.atMs >= from && sample.atMs < to)
+      .at(-1);
+    return latest?.bpm ?? null;
+  });
+}
 export function describeColumns(columns: readonly ChartColumn[]): {
   min: number | null;
   max: number | null;

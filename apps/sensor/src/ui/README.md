@@ -21,10 +21,13 @@ LiveDot, KeyValue, Row, Segmented and text/number fields. `Sheet.tsx` owns the m
 focus boundary. `Icon.tsx` renders the design SVG symbols from the generated `icons.ts`.
 `Meter.tsx` provides the segmented meter and legend. `Toast.tsx` is the transient
 confirmation above the tab bar. `Grain.tsx` draws the repeating paper texture behind the
-screen body. `Contours.tsx` draws the deterministic contour art used by S01–S03, and
-`AppMark.tsx` is the brand mark from the design package. `HrColumns.tsx` draws a gap-aware
-column chart from plain Views. `SensorApp.tsx` hosts the stage 4 product screens (see the
-app README); the diagnostic screen stays reachable from Profile.
+screen body. `Contours.tsx` draws the deterministic contour art used by S01–S04, and `AppMark.tsx` is
+the brand mark from the design package. `LineChart.tsx` is the SVG pulse chart with
+grid ticks, shaded range band, gap hatching, isolated points and an optional end dot.
+`PrintShape.tsx` draws the filled radial session print used by S05. `HrColumns.tsx` retains
+the older column projection for screens that have not moved to the line chart yet.
+`SensorApp.tsx` hosts the stage 4 product screens (see the app README); the diagnostic
+screen stays reachable from Profile.
 No sample HR, GPS, cloud connection or fabricated recordings are shown.
 The recorder remains native; opening or closing UI does not issue stop commands.
 The existing diagnostic screen retains its own appearance and English text.
@@ -46,8 +49,9 @@ Remaining stage 1 work:
 - Device checks of font rendering at font scale 2.0, TalkBack/VoiceOver, contrast
   and modal focus. The token contrast test now enforces the dark pressed primary
   button at ≥4.5:1.
-- Gap-aware line chart with range band, gap hatching and tooltip; component preview and
-  visual regression screenshots. Icons are transferred as generated SVG symbols.
+- Chart scrub/tooltip, component preview and visual regression screenshots. The line
+  chart, shaded range band and gap hatching are implemented; icons are generated SVG
+  symbols.
 - Persistent theme choice using existing native settings, after contract review.
 - iOS native module and build on macOS; Android hardware validation remains open.
 - Cloud/API scaffolding and shared package extraction in a separate increment.

@@ -558,3 +558,20 @@ Checks: `npm run typecheck`, `npm run lint`, `npm test` (70/70), Prettier on edi
 files, `expo export --platform android` (12 bundled assets). Device rendering,
 font scale 2.0, TalkBack and real sensor flow were NOT RUN; native rebuild is
 required for `react-native-svg`.
+
+## S04–S05 screen pass (2026-10-27)
+
+S04 now uses the live pulse stage with contour art, a large pulse numeral, the
+range readout pill, the 90-second line chart with a shaded range band and gap
+hatching, distance/route stats, state banners, status marks, and the fixed
+Pause/Finish action pair. Finish remains a confirmed bottom sheet; pause, stale
+pulse, sensor loss, missing GPS and low storage have explicit states.
+
+S05 now has the large duration header with the filled session print, a 2×2
+summary stats card, the range meter with percentages, and the coverage line chart
+with time ticks, a shaded range band, gap hatching and a pulse-coverage heading.
+The export action moved to the app-bar icon button; Done is fixed at the bottom.
+Cloud sync remains out of this integration.
+
+Checks: same typecheck, lint, 70 JS tests, Prettier and Android export. Device
+screenshots, chart scrubbing and real-session visual checks were NOT RUN.

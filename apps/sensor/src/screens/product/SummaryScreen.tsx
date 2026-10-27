@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   Action,
   Card,
   Detail,
   Dialog,
   Label,
+  Mark,
   Status,
   Warning,
 } from "../../ui/components";
-import { AppBar, Screen } from "../../ui/Screen";
-import { HrColumns } from "../../ui/HrColumns";
-import { SessionShape } from "../../ui/SessionShape";
+import { LineChart } from "../../ui/LineChart";
+import { Meter, Legend, type MeterTone } from "../../ui/Meter";
+import { PrintShape } from "../../ui/PrintShape";
+import { AppBar, IconButton, Screen } from "../../ui/Screen";
+import { Caption, Eyebrow, H1 } from "../../ui/Typography";
 import { useProduct } from "../../product/ProductContext";
 import { forgetSessionShape } from "../../product/useSessionShapes";
 import { localDataClient } from "../../recorder/LocalDataClient";
@@ -20,15 +23,18 @@ import type {
   SessionDetails,
 } from "../../../modules/veymur-recorder";
 import {
+  boundsFromRanges,
   formatClock,
   formatDateTime,
   formatDistance,
   formatPercent,
+  formatTime,
   hrSampleFromRecord,
   provisionalAggregateParameters,
   sessionChartColumns,
   withoutErrorCode,
   type HrSample,
+  type UserRange,
 } from "../../product/sessionMath";
 import { ExportDialog } from "./ExportDialog";
 import { Muted, Subheading } from "./shared";
@@ -103,6 +109,8 @@ const stateText = (state: string) =>
     : state === "interrupted"
       ? "Interrupted · saved part kept on this phone"
       : "Recording is not finished yet";
+const toneForRange = (range: UserRange): MeterTone =>
+  range.id === "below" ? "dusk" : range.id === "above" ? "ember" : "tide";
 
 export function SummaryScreen({
   sessionId,
@@ -144,12 +152,16 @@ export function SummaryScreen({
   const close = (
     <Action
       title={afterFinish ? "Done" : "Back to history"}
-      secondary={!afterFinish}
       onPress={onClose}
     />
   );
-  const frame = (content: ReactNode) => (
-    <Screen appBar={<AppBar title="Session summary" />}>{content}</Screen>
+  const frame = (content: ReactNode, actions?: ReactNode) => (
+    <Screen
+      appBar={<AppBar title="Session summary" />}
+      actions={actions ?? close}
+    >
+      {content}
+    </Screen>
   );
   if (error)
     return frame(
@@ -161,31 +173,92 @@ export function SummaryScreen({
             void retry();
           }}
         />
-        {close}
       </>,
     );
   if (!loaded)
-    return frame(
-      <>
-        <Status title="Loading the session from this phone…" />
-        {close}
-      </>,
-    );
+    return frame(<Status title="Loading the session from this phone…" />);
   const { details, samples, chartLimited } = loaded;
   const { session, summary } = details;
   const deletable =
     session.state === "completed" || session.state === "interrupted";
   const ranges = session.hr_ranges_snapshot?.ranges ?? [];
   const covered = summary?.hr_covered_duration_ms ?? 0;
+  const chartColumns = summary
+    ? sessionChartColumns(
+        samples,
+        summary.active_duration_ms,
+        details.parameters.hr_stale_after_ms,
+        90,
+      )
+    : [];
+  const chartValues = chartColumns.map((column) => column.bpm);
+  const chartBand = boundsFromRanges(ranges);
+  const chartTickIndexes = chartColumns.length
+    ? [
+        ...new Set([
+          0,
+          Math.floor((chartColumns.length - 1) / 2),
+          chartColumns.length - 1,
+        ]),
+      ]
+    : [];
+  const chartXTicks = summary
+    ? chartTickIndexes.map((index) => ({
+        index,
+        label: formatTime(
+          session.started_utc_ms +
+            (index / Math.max(chartColumns.length - 1, 1)) *
+              summary.active_duration_ms,
+          timeZone,
+        ),
+      }))
+    : [];
+  const rangeSegments = ranges.map((range) => ({
+    value:
+      summary?.range_durations.find((item) => item.range_id === range.id)
+        ?.duration_ms ?? 0,
+    tone: toneForRange(range),
+  }));
+  const rangeLegend = ranges.map((range) => {
+    const duration =
+      summary?.range_durations.find((item) => item.range_id === range.id)
+        ?.duration_ms ?? 0;
+    return {
+      label: range.label,
+      value: covered > 0 ? formatPercent(duration / covered) : "—",
+      tone: toneForRange(range),
+    };
+  });
+  const duration = summary?.active_duration_ms ?? session.recorded_active_ms;
+  const durationLabel = formatClock(duration).replace(/^00:/, "");
+  const summaryAppBar = (
+    <AppBar
+      title="Session summary"
+      right={
+        deletable ? (
+          <IconButton
+            icon="export"
+            label="Export session"
+            onPress={() => setExportVisible(true)}
+          />
+        ) : undefined
+      }
+    />
+  );
   return (
-    <Screen appBar={<AppBar title="Session summary" />}>
-      <Label>{formatDateTime(session.started_utc_ms, timeZone)}</Label>
-      <Status title={stateText(session.state)} />
-      {summary && (
-        <View style={{ alignItems: "center" }}>
-          <SessionShape
+    <Screen appBar={summaryAppBar} actions={close}>
+      <View style={styles.header}>
+        <View style={styles.headerCopy}>
+          <Eyebrow>
+            Session · {formatDateTime(session.started_utc_ms, timeZone)}
+          </Eyebrow>
+          <H1 style={styles.duration}>{durationLabel}</H1>
+          <Caption>active time</Caption>
+        </View>
+        {summary && (
+          <PrintShape
             label="Shape of this session"
-            size={168}
+            size={112}
             columns={sessionChartColumns(
               samples,
               summary.active_duration_ms,
@@ -193,8 +266,9 @@ export function SummaryScreen({
               48,
             )}
           />
-        </View>
-      )}
+        )}
+      </View>
+      <Mark icon="on-phone" label={stateText(session.state)} />
       {summary?.interrupted_tail_unknown && (
         <Warning
           title="The end of this recording is unknown"
@@ -209,112 +283,124 @@ export function SummaryScreen({
             .join(" ")}
         />
       )}
-      <Card>
-        <Detail
-          title="Active time"
-          value={formatClock(
-            summary?.active_duration_ms ?? session.recorded_active_ms,
-          )}
-          note={
-            summary ? undefined : "Recorder counter; pauses are not counted."
-          }
-        />
-        {summary && (
-          <>
-            <Detail
-              title="Distance"
-              value={
-                summary.gps_distance_m === null
-                  ? session.route_requested
-                    ? "Not available"
-                    : "Route off"
-                  : formatDistance(summary.gps_distance_m, units)
-              }
-              note={
-                summary.gps_distance_m === null && session.route_requested
-                  ? "No usable route segments were recorded."
-                  : summary.gps_distance_m !== null
-                    ? "Usable route segments only."
-                    : undefined
-              }
-            />
-            <Detail
-              title="Average pulse"
-              value={
-                summary.average_hr_bpm === null
-                  ? "Not available"
-                  : `${Math.round(summary.average_hr_bpm)} bpm`
-              }
-              note={
-                summary.average_hr_bpm === null
-                  ? "No usable pulse in this session."
-                  : "Usable part of the session"
-              }
-            />
-            <Detail
-              title="Pulse coverage"
-              value={
-                summary.hr_coverage === null
-                  ? "Unknown"
-                  : `Pulse recorded for ${formatPercent(summary.hr_coverage)} of active time`
-              }
-              note="Coverage shows how much we recorded, not how accurate the sensor is."
-            />
-          </>
-        )}
-      </Card>
       {summary && (
-        <Card>
-          <HrColumns
-            title="Pulse over active time"
-            columns={sessionChartColumns(
-              samples,
-              summary.active_duration_ms,
-              details.parameters.hr_stale_after_ms,
-            )}
+        <Card variant="flat" style={styles.statsCard}>
+          <View style={styles.statGrid}>
+            <View style={styles.statCell}>
+              <Detail
+                title="Distance"
+                value={
+                  summary.gps_distance_m === null
+                    ? session.route_requested
+                      ? "Not available"
+                      : "Off"
+                    : formatDistance(summary.gps_distance_m, units)
+                }
+                note={
+                  summary.gps_distance_m === null && session.route_requested
+                    ? "No usable route segments were recorded."
+                    : summary.gps_distance_m !== null
+                      ? "Usable route segments only."
+                      : "Route was not requested."
+                }
+              />
+            </View>
+            <View style={styles.statCell}>
+              <Detail
+                title="Average pulse"
+                value={
+                  summary.average_hr_bpm === null
+                    ? "Not available"
+                    : `${Math.round(summary.average_hr_bpm)} bpm`
+                }
+                note={
+                  summary.average_hr_bpm === null
+                    ? "No usable pulse in this session."
+                    : "Usable part of the session"
+                }
+              />
+            </View>
+            <View style={styles.statCell}>
+              <Detail
+                title="Cadence"
+                value="Not available"
+                note="This sensor does not report cadence."
+              />
+            </View>
+            <View style={styles.statCell}>
+              <Detail
+                title="Route"
+                value={session.route_requested ? "Recorded" : "Not recorded"}
+                note={
+                  session.route_requested
+                    ? "On this phone · usable segments only"
+                    : undefined
+                }
+              />
+            </View>
+          </View>
+        </Card>
+      )}
+      {summary && (
+        <Card variant="flat">
+          <Subheading>Time in your ranges</Subheading>
+          {ranges.length === 0 || covered <= 0 ? (
+            <Muted>No ranges were set for this session.</Muted>
+          ) : (
+            <>
+              <Meter
+                segments={rangeSegments}
+                label={rangeLegend
+                  .map((item) => `${item.label} ${item.value}`)
+                  .join(", ")}
+              />
+              <Legend items={rangeLegend} />
+              {summary.unassigned_hr_duration_ms > 0 && (
+                <Muted>
+                  Outside your ranges ·{" "}
+                  {formatPercent(summary.unassigned_hr_duration_ms / covered)}
+                </Muted>
+              )}
+              <Muted>
+                Ranges are the numbers you entered. Share of usable pulse time.
+              </Muted>
+            </>
+          )}
+        </Card>
+      )}
+      {summary && (
+        <Card variant="flat">
+          <Subheading>
+            {summary.hr_coverage === null
+              ? "Pulse over active time"
+              : `Pulse recorded for ${formatPercent(summary.hr_coverage)} of active time`}
+          </Subheading>
+          <Muted>
+            Gaps are drawn, not hidden. Coverage shows how much we recorded, not
+            how accurate the sensor is.
+          </Muted>
+          <LineChart
+            values={chartValues}
+            height={168}
+            yMin={80}
+            yMax={150}
+            yTicks={[90, 120, 150]}
+            xTicks={chartXTicks}
+            band={chartBand ? { min: chartBand.from, max: chartBand.to } : null}
+            label="Pulse during the session"
+            gapLabel="No pulse"
+          />
+          <Legend
+            items={[
+              { label: "Pulse from sensor", tone: "tide" },
+              { label: "No pulse data", tone: "gap" },
+            ]}
           />
           {chartLimited && (
             <Muted>
               This session is long; the chart shows its first part. The numbers
               above cover the whole session.
             </Muted>
-          )}
-          <Muted>
-            Gaps are shown, not filled. Pauses are marked with a line.
-          </Muted>
-        </Card>
-      )}
-      {summary && (
-        <Card>
-          <Subheading>Time in your ranges</Subheading>
-          {ranges.length === 0 ? (
-            <Muted>No ranges were set for this session.</Muted>
-          ) : (
-            <View style={{ gap: 8 }}>
-              {ranges.map((range) => {
-                const duration =
-                  summary.range_durations.find(
-                    (item) => item.range_id === range.id,
-                  )?.duration_ms ?? 0;
-                return (
-                  <Label key={range.id}>
-                    {range.label} ·{" "}
-                    {covered > 0 ? formatPercent(duration / covered) : "—"}
-                  </Label>
-                );
-              })}
-              {summary.unassigned_hr_duration_ms > 0 && (
-                <Label>
-                  Outside your ranges ·{" "}
-                  {covered > 0
-                    ? formatPercent(summary.unassigned_hr_duration_ms / covered)
-                    : "—"}
-                </Label>
-              )}
-              <Muted>
-                Ranges are the numbers you entered. Share of usable pulse time.
-              </Muted>
-            </View>
           )}
         </Card>
       )}
@@ -324,18 +410,10 @@ export function SummaryScreen({
           this version.
         </Muted>
       )}
-      {deletable && summary && (
-        <Action
-          title="Export this session"
-          secondary
-          onPress={() => setExportVisible(true)}
-        />
-      )}
-      {close}
       {deletable && (
         <Action
           title={deleting ? "Deleting…" : "Delete from this phone"}
-          secondary
+          variant="danger"
           disabled={deleting}
           onPress={() => setConfirmDelete(true)}
         />
@@ -379,6 +457,7 @@ export function SummaryScreen({
         </Muted>
         <Action
           title="Delete session"
+          variant="danger"
           onPress={() => {
             void remove();
           }}
@@ -387,3 +466,28 @@ export function SummaryScreen({
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    paddingVertical: 4,
+  },
+  headerCopy: { flex: 1, gap: 4 },
+  duration: {
+    fontSize: 48,
+    lineHeight: 50,
+  },
+  statsCard: { padding: 20 },
+  statGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 20,
+  },
+  statCell: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minWidth: 140,
+  },
+});

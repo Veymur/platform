@@ -10,7 +10,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Grain } from "./Grain";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import { useInsets } from "./Insets";
 import { useTheme } from "./Theme";
 import { fonts, spacing } from "./tokens";
@@ -113,6 +113,34 @@ export function BackButton({
       ]}
     >
       <Icon name="chevron-left" size={22} color={colors.ink} />
+    </Pressable>
+  );
+}
+
+export function IconButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.backButton,
+        {
+          borderColor: colors.rule,
+          backgroundColor: pressed ? colors.sunk : colors.raised,
+        },
+      ]}
+    >
+      <Icon name={icon} size={20} color={colors.ink} />
     </Pressable>
   );
 }

@@ -537,3 +537,24 @@ Checks: `npm run typecheck`, `npm run lint`, `npm test` (70/70), Python tests
 Native/Kotlin tests and device acceptance still need an Android SDK/phone; live
 distance, fonts at font scale 2.0, TalkBack, DND and the real share sheet remain
 device checks.
+
+## P1 foundation and S01–S03 screen pass (2026-10-27)
+
+The UI foundation now has the design type scale (including Bricolage 200/340/440),
+pill buttons with variants, card variants, rows, chips, marks, banners, a custom
+switch, radio/checkbox choices, segmented control, meter/legend, toast, contour art,
+the paper-grain texture and the generated 62-symbol icon set. `Dialog` is a bottom
+sheet with reduced-motion-aware entrance animation. `react-native-svg` is used for
+the icon set and requires a native prebuild/reinstall.
+
+S01 now has the hero layout with the brand mark, contour art, display headline,
+fixed actions and inline storage link. S02 uses the radar intro, explicit scan
+states, sensor option cards, connected key/value card and step-specific fixed
+actions. S03 has the Device app-bar action, connected chip and battery mark, contour
+start disc, pulse card, route/range row list, location banner and centered
+on-phone mark.
+
+Checks: `npm run typecheck`, `npm run lint`, `npm test` (70/70), Prettier on edited
+files, `expo export --platform android` (12 bundled assets). Device rendering,
+font scale 2.0, TalkBack and real sensor flow were NOT RUN; native rebuild is
+required for `react-native-svg`.

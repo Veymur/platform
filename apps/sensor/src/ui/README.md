@@ -21,9 +21,10 @@ LiveDot, KeyValue, Row, Segmented and text/number fields. `Sheet.tsx` owns the m
 focus boundary. `Icon.tsx` renders the design SVG symbols from the generated `icons.ts`.
 `Meter.tsx` provides the segmented meter and legend. `Toast.tsx` is the transient
 confirmation above the tab bar. `Grain.tsx` draws the repeating paper texture behind the
-screen body. `HrColumns.tsx` draws a gap-aware column chart from plain Views. `SensorApp.tsx`
-hosts the stage 4 product screens (see the app README); the diagnostic screen stays
-reachable from Profile.
+screen body. `Contours.tsx` draws the deterministic contour art used by S01–S03, and
+`AppMark.tsx` is the brand mark from the design package. `HrColumns.tsx` draws a gap-aware
+column chart from plain Views. `SensorApp.tsx` hosts the stage 4 product screens (see the
+app README); the diagnostic screen stays reachable from Profile.
 No sample HR, GPS, cloud connection or fabricated recordings are shown.
 The recorder remains native; opening or closing UI does not issue stop commands.
 The existing diagnostic screen retains its own appearance and English text.

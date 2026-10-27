@@ -118,7 +118,7 @@ export function Action({
   /** Kept for callers from the first product screens. */
   secondary?: boolean;
   variant?: ActionVariant;
-  size?: "md" | "lg";
+  size?: "sm" | "md" | "lg";
   block?: boolean;
   icon?: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -126,7 +126,7 @@ export function Action({
 }) {
   const { colors } = useTheme();
   const kind = variant ?? (secondary ? "secondary" : "primary");
-  const height = size === "lg" ? 56 : 48;
+  const height = size === "lg" ? 56 : size === "sm" ? 40 : 48;
   const background =
     kind === "primary"
       ? colors.solid
@@ -173,7 +173,8 @@ export function Action({
           backgroundColor: pressed ? pressedBackground : background,
           borderColor,
           borderWidth: kind === "quiet" ? 0 : 1.5,
-          paddingHorizontal: kind === "quiet" ? spacing.section / 2 : 24,
+          paddingHorizontal:
+            kind === "quiet" ? spacing.section / 2 : size === "sm" ? 16 : 24,
           opacity: disabled ? 0.45 : 1,
           transform: pressed ? [{ scale: 0.98 }] : undefined,
         },
@@ -186,8 +187,8 @@ export function Action({
         style={{
           color: textColor,
           fontFamily: fonts.uiSemibold,
-          fontSize: size === "lg" ? 17 : 16,
-          lineHeight: size === "lg" ? 18.7 : 17.6,
+          fontSize: size === "lg" ? 17 : size === "sm" ? 14 : 16,
+          lineHeight: size === "lg" ? 18.7 : size === "sm" ? 15.4 : 17.6,
           textAlign: "center",
         }}
       >
@@ -199,28 +200,54 @@ export function Action({
 
 export function Toggle({
   title,
+  meta,
+  lead,
   value,
   onChange,
   disabled = false,
   showState = true,
+  divider = false,
 }: {
   title: string;
+  meta?: string;
+  lead?: ReactNode;
   value: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
   showState?: boolean;
+  divider?: boolean;
 }) {
   const { colors } = useTheme();
   return (
     <Pressable
       accessibilityRole="switch"
-      accessibilityLabel={title}
+      accessibilityLabel={meta ? `${title}. ${meta}` : title}
       accessibilityState={{ checked: value, disabled }}
       disabled={disabled}
       onPress={() => onChange(!value)}
-      style={styles.toggle}
+      style={[
+        styles.toggle,
+        {
+          borderBottomColor: colors.rule,
+          borderBottomWidth: divider ? 1 : 0,
+        },
+      ]}
     >
-      <Label style={{ flex: 1, fontFamily: fonts.uiMedium }}>{title}</Label>
+      {lead && (
+        <View style={[styles.rowLead, { backgroundColor: colors.sunk }]}>
+          {lead}
+        </View>
+      )}
+      <View style={styles.toggleBody}>
+        <Label style={{ fontFamily: fonts.uiMedium }}>{title}</Label>
+        {meta && (
+          <Label
+            style={{ color: colors["ink-3"], fontSize: 14, lineHeight: 20.3 }}
+          >
+            {meta}
+          </Label>
+        )}
+      </View>
       {showState && (
         <Label
           style={{
@@ -859,12 +886,13 @@ const styles = StyleSheet.create({
   actionBlock: { width: "100%" },
   actionInline: { alignSelf: "flex-start" },
   toggle: {
-    minHeight: spacing.tap,
-    minWidth: spacing.tap,
+    minHeight: 56,
+    paddingVertical: spacing.section / 2,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.gap,
+    gap: spacing.section,
   },
+  toggleBody: { flex: 1, minWidth: 0, gap: 2 },
   switchTrack: {
     width: 52,
     height: 30,

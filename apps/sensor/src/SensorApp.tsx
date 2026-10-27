@@ -55,6 +55,7 @@ function Shell() {
   const [rangeEditor, setRangeEditor] = useState(false);
   const [diagnostics, setDiagnostics] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+  const [showWelcome, setShowWelcome] = useState(false);
   const acknowledgedSave = useRef<string | null>(null);
   const routeRestored = useRef(false);
   useEffect(() => {
@@ -167,6 +168,8 @@ function Shell() {
         </Screen>
       );
     if (!settings) return <WelcomeScreen />;
+    if (showWelcome)
+      return <WelcomeScreen onContinue={() => setShowWelcome(false)} />;
     if (overlay?.kind === "summary")
       return (
         <SummaryScreen
@@ -210,7 +213,9 @@ function Shell() {
         <ConnectScreen
           onDone={() => setOverlay(null)}
           onBack={
-            snapshot.selectedDeviceId ? () => setOverlay(null) : undefined
+            snapshot.selectedDeviceId
+              ? () => setOverlay(null)
+              : () => setShowWelcome(true)
           }
         />
       );
@@ -231,6 +236,7 @@ function Shell() {
       (!snapshot?.connectedDeviceId && !snapshot?.selectedDeviceId));
   const showTabs =
     settings !== null &&
+    !showWelcome &&
     overlay?.kind !== "summary" &&
     (!sessionActive || tab !== "Record") &&
     !connectScreen;

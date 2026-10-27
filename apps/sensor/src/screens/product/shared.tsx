@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Linking } from "react-native";
 import { Action, Dialog, Label } from "../../ui/components";
 import { useTheme } from "../../ui/Theme";
+import { H3 } from "../../ui/Typography";
 import type { Preferences } from "../../../modules/veymur-recorder";
 import {
   alertModeLabels,
@@ -62,17 +63,10 @@ export function SignInDialog({
 }
 export function Muted({ children }: { children: ReactNode }) {
   const { colors } = useTheme();
-  return <Label style={{ color: colors["ink-2"] }}>{children}</Label>;
+  return <Label style={{ color: colors["ink-3"] }}>{children}</Label>;
 }
 export function Subheading({ children }: { children: string }) {
-  return (
-    <Label
-      accessibilityRole="header"
-      style={{ fontSize: 20, fontWeight: "600" }}
-    >
-      {children}
-    </Label>
-  );
+  return <H3 accessibilityRole="header">{children}</H3>;
 }
 export function OpenSettingsAction({
   onError,

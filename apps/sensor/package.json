@@ -29,7 +29,8 @@
     "expo-dev-client": "57.0.20",
     "expo-font": "57.0.4",
     "react": "19.2.3",
-    "react-native": "0.86.3"
+    "react-native": "0.86.3",
+    "react-native-svg": "15.15.4"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

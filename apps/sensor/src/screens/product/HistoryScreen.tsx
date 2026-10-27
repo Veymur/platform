@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
-import { Action, Heading, Label, Status, Warning } from "../../ui/components";
+import { Action, Label, Mark, Status, Warning } from "../../ui/components";
+import { AppBar, Screen } from "../../ui/Screen";
 import { useTheme } from "../../ui/Theme";
 import { radius, spacing } from "../../ui/tokens";
 import { useProduct } from "../../product/ProductContext";
@@ -133,9 +134,14 @@ export function HistoryScreen({
     }
   };
   return (
-    <>
-      <Heading>History</Heading>
-      <Muted>✓ Works offline · sessions on this phone</Muted>
+    <Screen
+      appBar={
+        <AppBar
+          title="History"
+          right={<Mark label="Works offline" icon="on-phone" />}
+        />
+      }
+    >
       {pendingCleanup.length > 0 && (
         <>
           <Warning
@@ -217,6 +223,6 @@ export function HistoryScreen({
           }}
         />
       )}
-    </>
+    </Screen>
   );
 }

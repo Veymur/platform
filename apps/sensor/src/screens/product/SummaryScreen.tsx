@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import {
   Action,
   Card,
   Detail,
   Dialog,
-  Heading,
   Label,
   Status,
   Warning,
 } from "../../ui/components";
+import { AppBar, Screen } from "../../ui/Screen";
 import { HrColumns } from "../../ui/HrColumns";
 import { SessionShape } from "../../ui/SessionShape";
 import { useProduct } from "../../product/ProductContext";
@@ -148,10 +148,12 @@ export function SummaryScreen({
       onPress={onClose}
     />
   );
+  const frame = (content: ReactNode) => (
+    <Screen appBar={<AppBar title="Session summary" />}>{content}</Screen>
+  );
   if (error)
-    return (
+    return frame(
       <>
-        <Heading>Session summary</Heading>
         <Warning title="Couldn't open this session" detail={error} />
         <Action
           title="Try again"
@@ -160,15 +162,14 @@ export function SummaryScreen({
           }}
         />
         {close}
-      </>
+      </>,
     );
   if (!loaded)
-    return (
+    return frame(
       <>
-        <Heading>Session summary</Heading>
         <Status title="Loading the session from this phone…" />
         {close}
-      </>
+      </>,
     );
   const { details, samples, chartLimited } = loaded;
   const { session, summary } = details;
@@ -177,8 +178,7 @@ export function SummaryScreen({
   const ranges = session.hr_ranges_snapshot?.ranges ?? [];
   const covered = summary?.hr_covered_duration_ms ?? 0;
   return (
-    <>
-      <Heading>Session summary</Heading>
+    <Screen appBar={<AppBar title="Session summary" />}>
       <Label>{formatDateTime(session.started_utc_ms, timeZone)}</Label>
       <Status title={stateText(session.state)} />
       {summary && (
@@ -384,6 +384,6 @@ export function SummaryScreen({
           }}
         />
       </Dialog>
-    </>
+    </Screen>
   );
 }

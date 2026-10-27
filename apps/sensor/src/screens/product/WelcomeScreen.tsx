@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Action, Heading, Label, Warning } from "../../ui/components";
+import { Screen } from "../../ui/Screen";
 import { useTheme } from "../../ui/Theme";
+import { Lede } from "../../ui/Typography";
 import { useProduct } from "../../product/ProductContext";
 import { Muted, SignInDialog, StorageDialog } from "./shared";
 
@@ -23,14 +25,15 @@ export function WelcomeScreen() {
     }
   };
   return (
-    <>
+    <Screen>
       <Label style={{ color: colors.tide }}>veymur/sensor</Label>
       <Heading>Pulse and activity. Nothing extra.</Heading>
-      <Label>
+      <Lede>
         Record sessions on this phone. An account is only needed for the cloud.
-      </Label>
+      </Lede>
       <Action
         title={saving ? "Saving…" : "Continue without an account"}
+        size="lg"
         disabled={saving}
         onPress={() => {
           void continueAsGuest();
@@ -38,13 +41,13 @@ export function WelcomeScreen() {
       />
       <Action
         title="Sign in"
-        secondary
+        variant="quiet"
         onPress={() => setSignInVisible(true)}
       />
       <Muted>For adults. A wellness log, not a medical device.</Muted>
       <Action
         title="How your data is stored"
-        secondary
+        variant="quiet"
         onPress={() => setStorageVisible(true)}
       />
       {error && <Warning title="Couldn't continue" detail={error} />}
@@ -56,6 +59,6 @@ export function WelcomeScreen() {
         visible={signInVisible}
         onClose={() => setSignInVisible(false)}
       />
-    </>
+    </Screen>
   );
 }

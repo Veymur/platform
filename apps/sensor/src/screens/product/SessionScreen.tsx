@@ -5,13 +5,15 @@ import {
   Card,
   Detail,
   Dialog,
-  Heading,
   Label,
+  LiveDot,
   Status,
   Warning,
 } from "../../ui/components";
+import { AppBar, Screen } from "../../ui/Screen";
 import { HrColumns } from "../../ui/HrColumns";
 import { SessionShape } from "../../ui/SessionShape";
+import { Mono, PulseNumber, Unit } from "../../ui/Typography";
 import { useTheme } from "../../ui/Theme";
 import { useProduct } from "../../product/ProductContext";
 import { localDataClient } from "../../recorder/LocalDataClient";
@@ -29,7 +31,6 @@ import {
   type UserRange,
 } from "../../product/sessionMath";
 import type { RecorderSnapshot } from "../../recorder/types";
-import { fonts } from "../../ui/tokens";
 import { Muted, OpenSettingsAction } from "./shared";
 
 function useSessionRanges(
@@ -125,36 +126,59 @@ export function SessionScreen() {
     snapshot.alertsStatus === "notifications_disabled";
   const title =
     state in titles ? titles[state as keyof typeof titles] : "Recording";
-  return (
+  const liveDot = <LiveDot active={!paused} />;
+  const timer = (
+    <Mono
+      accessible
+      accessibilityLabel={`Active time ${formatClock(shownActiveMs)}`}
+      size={28}
+      style={{
+        lineHeight: 31,
+        color: paused ? colors["ink-3"] : colors.ink,
+      }}
+    >
+      {formatClock(shownActiveMs)}
+    </Mono>
+  );
+  const actions = interrupted ? (
+    <Action
+      title={pending === "Finish" ? "Saving…" : "Save available part"}
+      disabled={busy}
+      onPress={() => {
+        void controller.finish();
+      }}
+    />
+  ) : (
     <>
-      <Heading>{title}</Heading>
-      <View
-        accessible
-        accessibilityLabel={`Active time ${formatClock(shownActiveMs)}`}
-      >
-        <Label
-          style={{
-            fontFamily: fonts.display,
-            fontSize: 40,
-            fontVariant: ["tabular-nums"],
-          }}
-        >
-          {formatClock(shownActiveMs)}
-        </Label>
-        <Muted>active time{paused ? " · paused, not counting" : ""}</Muted>
-      </View>
+      <Action
+        title={paused ? "Resume" : "Pause"}
+        disabled={busy || !(paused || state === "recording")}
+        onPress={() => {
+          void (paused ? controller.resume() : controller.pause());
+        }}
+      />
+      <Action
+        title={pending === "Finish" ? "Saving…" : "Finish"}
+        secondary
+        disabled={busy || state === "finishing"}
+        onPress={() => setConfirmFinish(true)}
+      />
+    </>
+  );
+  return (
+    <Screen
+      appBar={<AppBar title={title} left={liveDot} right={timer} />}
+      actions={actions}
+    >
       <Card>
         {fresh ? (
           <View
             accessible
             accessibilityLabel={`Pulse ${snapshot.hr} beats per minute${position ? `, ${position.label}` : ""}`}
           >
-            <Label style={{ fontFamily: fonts.displayLight, fontSize: 56 }}>
-              {snapshot.hr}{" "}
-              <Label style={{ fontFamily: fonts.mono, fontSize: 20 }}>
-                bpm
-              </Label>
-            </Label>
+            <PulseNumber state={paused ? "stale" : "fresh"}>
+              {snapshot.hr} <Unit size={15}>bpm</Unit>
+            </PulseNumber>
             {position && (
               <Label style={{ color: colors.tide, fontWeight: "600" }}>
                 Your range: {position.label}
@@ -289,31 +313,6 @@ export function SessionScreen() {
           <OpenSettingsAction />
         </>
       )}
-      {interrupted ? (
-        <Action
-          title={pending === "Finish" ? "Saving…" : "Save available part"}
-          disabled={busy}
-          onPress={() => {
-            void controller.finish();
-          }}
-        />
-      ) : (
-        <>
-          <Action
-            title={paused ? "Resume" : "Pause"}
-            disabled={busy || !(paused || state === "recording")}
-            onPress={() => {
-              void (paused ? controller.resume() : controller.pause());
-            }}
-          />
-          <Action
-            title={pending === "Finish" ? "Saving…" : "Finish"}
-            secondary
-            disabled={busy || state === "finishing"}
-            onPress={() => setConfirmFinish(true)}
-          />
-        </>
-      )}
       {error && <Warning title={withoutErrorCode(error)} />}
       <Dialog
         visible={confirmFinish}
@@ -330,6 +329,6 @@ export function SessionScreen() {
           }}
         />
       </Dialog>
-    </>
+    </Screen>
   );
 }

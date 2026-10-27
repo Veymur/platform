@@ -5,12 +5,12 @@ import {
   Card,
   Detail,
   Dialog,
-  Heading,
   Label,
   Status,
   Toggle,
   Warning,
 } from "../../ui/components";
+import { AppBar, Screen } from "../../ui/Screen";
 import { useProduct } from "../../product/ProductContext";
 import { routePermissionGranted } from "../../recorder/permissions";
 import { formatAge, withoutErrorCode } from "../../product/sessionMath";
@@ -60,8 +60,7 @@ export function ReadyScreen({
     await rememberRoute(false);
   };
   return (
-    <>
-      <Heading>Record</Heading>
+    <Screen appBar={<AppBar title="Record" />}>
       {snapshot.recoveredCount > 0 && !recoveredDismissed && (
         <Card>
           <Subheading>Found an unfinished recording</Subheading>
@@ -199,6 +198,6 @@ export function ReadyScreen({
           }}
         />
       </Dialog>
-    </>
+    </Screen>
   );
 }

@@ -53,6 +53,8 @@ const markPairs = [
   ["edge", "raised"],
   ["edge", "bg"],
   ["tide-mark", "raised"],
+  ["ember-mark", "raised"],
+  ["dusk-mark", "raised"],
   ["ink-3", "raised"],
   ["ember", "ember-wash"],
 ];

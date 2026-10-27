@@ -6,7 +6,7 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { AccessibilityInfo, AppState, Dimensions } from "react-native";
+import { AppState, Dimensions } from "react-native";
 import { productPermissions } from "../recorder/permissions";
 import { recorderClient, type NetworkStatus } from "../recorder/RecorderClient";
 import {
@@ -15,6 +15,7 @@ import {
   type ScreenInsets,
 } from "../ui/Insets";
 import { useRecorder } from "../recorder/useRecorder";
+import { useReducedMotion } from "../ui/useReducedMotion";
 import { appendLiveSample, type LiveSample, type Units } from "./sessionMath";
 import {
   deviceTimeZone,
@@ -74,26 +75,6 @@ function useNetworkStatus(): NetworkStatus | null {
   }, []);
   return network;
 }
-function useReduceMotion(): boolean {
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    let active = true;
-    void AccessibilityInfo.isReduceMotionEnabled()
-      .then((value) => {
-        if (active) setReduceMotion(value);
-      })
-      .catch(() => undefined);
-    const subscription = AccessibilityInfo.addEventListener(
-      "reduceMotionChanged",
-      setReduceMotion,
-    );
-    return () => {
-      active = false;
-      subscription.remove();
-    };
-  }, []);
-  return reduceMotion;
-}
 const ProductContext = createContext<ProductState | null>(null);
 export function ProductProvider({ children }: PropsWithChildren) {
   const recorder = useRecorder(productPermissions);
@@ -103,7 +84,7 @@ export function ProductProvider({ children }: PropsWithChildren) {
   const lastRevision = useRef(-1);
   const insets = useScreenInsets();
   const network = useNetworkStatus();
-  const reduceMotion = useReduceMotion();
+  const reduceMotion = useReducedMotion();
   const snapshot = recorder.snapshot;
   useEffect(() => {
     if (!snapshot || snapshot.revision === lastRevision.current) return;

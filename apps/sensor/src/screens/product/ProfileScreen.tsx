@@ -3,12 +3,12 @@ import {
   Action,
   Card,
   Choice,
-  Heading,
   Label,
   Status,
   TextField,
   Warning,
 } from "../../ui/components";
+import { AppBar, Screen } from "../../ui/Screen";
 import { useTheme } from "../../ui/Theme";
 import { useProduct } from "../../product/ProductContext";
 import { deviceTimeZone } from "../../product/usePreferences";
@@ -76,8 +76,7 @@ export function ProfileScreen({
     void save((current) => ({ ...current, timezone_id: value.trim() }));
   };
   return (
-    <>
-      <Heading>Profile</Heading>
+    <Screen appBar={<AppBar title="Profile" />}>
       <Card>
         <Status
           title="Guest"
@@ -173,6 +172,6 @@ export function ProfileScreen({
         visible={signInVisible}
         onClose={() => setSignInVisible(false)}
       />
-    </>
+    </Screen>
   );
 }

@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
 import {
-  Action,
-  Card,
-  Heading,
-  Label,
-  Status,
-  Warning,
-} from "../../ui/components";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { View } from "react-native";
+import { Action, Card, Label, Status, Warning } from "../../ui/components";
+import { AppBar, BackButton, Screen } from "../../ui/Screen";
 import { useProduct } from "../../product/ProductContext";
 import { productPermissions } from "../../recorder/permissions";
 import { withoutErrorCode } from "../../product/sessionMath";
@@ -57,8 +57,20 @@ export function ConnectScreen({
     autoSearched.current = true;
     void search();
   }, [granted, snapshot, search]);
+  const frame = (content: ReactNode) => (
+    <Screen
+      appBar={
+        <AppBar
+          title="Connect a sensor"
+          left={onBack ? <BackButton onPress={onBack} /> : undefined}
+        />
+      }
+    >
+      {content}
+    </Screen>
+  );
   if (granted === null || !snapshot)
-    return <Status live title="Checking Bluetooth permission…" />;
+    return frame(<Status live title="Checking Bluetooth permission…" />);
   const busy = pending !== null;
   const connected = snapshot.connectedDeviceId;
   const failedTarget =
@@ -73,11 +85,9 @@ export function ConnectScreen({
     lastTarget !== null &&
     !failedTarget &&
     !snapshot.discoveryActive;
-  const back = onBack && <Action title="Back" secondary onPress={onBack} />;
   if (!granted)
-    return (
+    return frame(
       <>
-        <Heading>Connect a sensor</Heading>
         <Card>
           <Subheading>Why Bluetooth?</Subheading>
           <Label>
@@ -104,14 +114,12 @@ export function ConnectScreen({
         )}
         <OpenSettingsAction onError={setSettingsError} />
         {settingsError && <Warning title={settingsError} />}
-        {back}
-      </>
+      </>,
     );
   if (connected) {
     const device = snapshot.devices.find((item) => item.id === connected);
-    return (
+    return frame(
       <>
-        <Heading>Connect a sensor</Heading>
         <Card>
           <Status
             live
@@ -143,14 +151,12 @@ export function ConnectScreen({
             }}
           />
         </Card>
-        {back}
-      </>
+      </>,
     );
   }
   if (failedTarget)
-    return (
+    return frame(
       <>
-        <Heading>Connect a sensor</Heading>
         <Card>
           <Status
             live
@@ -178,13 +184,11 @@ export function ConnectScreen({
           <OpenSettingsAction onError={setSettingsError} />
         </Card>
         {settingsError && <Warning title={settingsError} />}
-        {back}
-      </>
+      </>,
     );
   if (connecting)
-    return (
+    return frame(
       <>
-        <Heading>Connect a sensor</Heading>
         <Card>
           <Status
             live
@@ -201,12 +205,10 @@ export function ConnectScreen({
             }}
           />
         </Card>
-        {back}
-      </>
+      </>,
     );
-  return (
+  return frame(
     <>
-      <Heading>Connect a sensor</Heading>
       <Card>
         {snapshot.discoveryActive || pending === "Search" ? (
           <Status
@@ -272,7 +274,6 @@ export function ConnectScreen({
         />
       )}
       {error && !failedTarget && <Warning title={withoutErrorCode(error)} />}
-      {back}
-    </>
+    </>,
   );
 }

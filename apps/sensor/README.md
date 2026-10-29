@@ -1,6 +1,6 @@
 # Veymur Sensor — Android diagnostic recorder
 
-Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=6/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, start/pause/resume/confirmed finish, session ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder/recorder-bridge-contract.md).
+Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=10/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, live GPS distance, start/pause/resume/confirmed finish, session ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder/recorder-bridge-contract.md).
 
 Polar diagnostic stages D1–D2 now add explicit immutable SDK input events before recorder processing, separate receipt/worker timing, all 16 base callback signatures and unfiltered discovery results. D3 provides the native encrypted journal and D4 adds explicit capture controls; D5 adds capture export and deletion: the current Export last session button still produces the existing session ZIP. The native test sink is disabled by default. See the [input contract](../../docs/diagnostic/polar-diagnostic-contract.md) and [implementation checks](../../docs/diagnostic/polar-diagnostic-implementation.md). Rebuild native after these changes; existing stage-8 APKs do not contain this boundary.
 
@@ -89,7 +89,7 @@ adb -s emulator-5554 shell am start -W -a android.intent.action.VIEW \
 adb -s emulator-5554 logcat -d -s ReactNativeJS:I '*:S'
 ```
 
-Since stage 4 the app opens the product screens (S01 on a fresh install); the diagnostic screen is under Profile → Recorder diagnostics. The typed handshake requires contractVersion=9/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
+Since stage 4 the app opens the product screens (S01 on a fresh install); the diagnostic screen is under Profile → Recorder diagnostics. The typed handshake requires contractVersion=10/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
 
 An incompatible native binary produces a rebuild/reinstall error. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, registration, permissions or plugin/config changes require prebuild and a new installation. JS reload updates only JS. This **debug development APK** uses Metro; it supports the JS reload scenarios. It is separate from the autonomous diagnostic variant below.
 
@@ -204,7 +204,7 @@ Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings
 
 ### Local history API
 
-`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v9 (local operations were introduced in v6); no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history, deletion confirmation and user CSV/GPX export are added in stage 4. See [local operations contract and verification](../../docs/local-data-operations.md).
+`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v10 (local operations were introduced in v6); no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history, deletion confirmation and user CSV/GPX export are added in stage 4. See [local operations contract and verification](../../docs/local-data-operations.md).
 
 ### Local data verification
 
@@ -369,11 +369,12 @@ H01 empty state, P01 theme persisted across JS reload, range 105–130/Silent sa
 native with notification denial shown. NOT RUN: S03–S05 with a real sensor and saved
 sessions, TalkBack, large text and physical phones.
 
-Known limitations: “no network” status is not shown (no connectivity source without a
-new dependency or bridge change); live distance is shown only in the summary; the
-bottom inset assumes a 48 dp navigation bar because edge-to-edge RN reports no inset.
-Next steps: (2) native CSV/GPX export with system share and independent parser checks;
-(3) session “shapes”, accessibility pass on devices and system-bar insets.
+Known limitations at this step: “no network” status was not shown (no connectivity
+source without a new dependency or bridge change); live distance was shown only in
+the summary (resolved by bridge v10/S04 in P1, 2026-10-26); the bottom inset assumed
+a 48 dp navigation bar because edge-to-edge RN reports no inset. Next steps: (2) native
+CSV/GPX export with system share and independent parser checks; (3) session “shapes”,
+accessibility pass on devices and system-bar insets.
 
 ## Sensor implementation stage 4 — step 2: user CSV/GPX export (2026-10-19)
 
@@ -467,10 +468,127 @@ element ≥ 48 dp with a label. Font scale, navigation mode and the AVD's disabl
 network were restored afterwards.
 
 Contrast (WCAG): all text pairs used by product screens are ≥ 4.5:1 in both
-themes and borders/chart marks ≥ 3:1. Design follow-up: white text on the pressed
-primary button in dark theme (`on-solid` on `solid-press`) is 4.01:1; the design
-token was not changed here.
+themes and borders/chart marks ≥ 3:1. The dark pressed primary button
+(`on-solid` on `solid-press`) was raised from 4.01:1 to ≥4.5:1 by changing the
+dark `solid-press` token to `#176f63`; the contrast test now enforces it.
 
 NOT RUN: TalkBack navigation by a person, S03–S05 with a real sensor (live shape,
 network status in S04, export share sheet), physical phones and iOS. Stage 4
 remains open until the local flow is accepted on hardware.
+
+## Hardware run on Galaxy A23 without GPS (2026-10-22/23)
+
+Diagnostic embedded-JS APK on bridge v9 (SHA-256
+`f9a77d861cf1900e3db8377648f0e645fb47cd52d56ba4480803b63966eb4eb7`, test-signed),
+installed with `adb install -r` over the existing D8 build without clearing data.
+Samsung SM-A235F, Android 14/API 34; Polar Verity Sense firmware 0.1.6 / 3.0.16,
+Polar SDK 8.4.0. Exports were checked with `analyze_export.py`,
+`validate_polar_diagnostic.py` and `verify_user_export.py`; archives stay local and
+ignored by Git.
+
+PASS: offline cold start and history after relaunch; 16 min screen lock with USB
+unplugged (max HR gap 1.1 s); background with notifications denied; sensor
+switched off and automatically reconnected without a new start (HR=0 rejected,
+gap kept as a gap); pause with no HR inside and two segments; force-stop with one
+`interrupted` recovery and no auto-resume; timezone change with steady UTC and
+active time. Permission denial passed by operator observation only. Upgrade over
+the old database opened legacy sessions as `legacy_v1` with an explicit
+unavailable summary; no pre-upgrade copy existed for a byte comparison. Battery:
+one run, about 110 mAh/h for the whole phone over 49 min, no baseline.
+
+Fixed during the run: sharing from RN `Modal` windows (Recorder diagnostics, S05
+export dialog) failed with `NO_ACTIVITY` because the modal owns window focus;
+`shareExport` and `ensureActivity` now use the host-visibility guard. AVD:
+93 instrumentation tests without failures, 2 expected external-protocol skips.
+`verify_user_export.py` now accepts a zero-length usable interval produced by two
+observations less than 1 ms apart.
+
+Fixed after the run: Polar SDK 8.4.0 delivers `hrNotificationReceived` and
+`disconnected` twice with identical payload. `PolarRecorderProcessor` now ignores a
+second HR with the same device/payload within 20 ms and treats a repeated disconnect
+as idempotent; the raw diagnostic capture still retains both inputs, and existing
+sessions are not rewritten. S04 now interpolates the displayed active time between
+native snapshots (display-only; native remains authoritative). `payload.active_ms`
+is documented as a chart projection while summary/export use receipt time and the
+session timeline.
+
+NOT RUN: GPS scenarios, system clock change, battery baseline, iOS and other
+phones. Full protocol and results: `docs/recorder-validation.md` (local, not
+tracked).
+
+## P1 — live distance, fonts and contrast (2026-10-26)
+
+Bridge **v10** adds nullable `RecorderSnapshot.gpsDistanceM`. Native
+`LiveGpsDistance` applies the same provisional accuracy/gap/speed filters as the
+stored-session aggregator, breaks its line on pause/GPS loss/provider changes and
+is display-only; the summary is still recalculated from committed records. S04
+shows distance when the route is on and keeps null until a usable edge exists.
+
+The app now bundles static TTF versions of Bricolage Grotesque, Instrument Sans and
+DM Mono (converted from the design WOFF2 sources, with OFL texts), loads them via
+`expo-font`, and uses display/UI/mono faces in the shared components. System-font
+fallback remains if loading fails.
+
+The dark pressed primary button token is now `#176f63`; the contrast test enforces
+at least 4.5:1 for `on-solid` on both normal and pressed primary buttons.
+
+Checks: `npm run typecheck`, `npm run lint`, `npm test` (70/70), Python tests
+(33/33), `expo export --platform android` with all eight font assets bundled.
+Native/Kotlin tests and device acceptance still need an Android SDK/phone; live
+distance, fonts at font scale 2.0, TalkBack, DND and the real share sheet remain
+device checks.
+
+## P1 foundation and S01–S03 screen pass (2026-10-27)
+
+The UI foundation now has the design type scale (including Bricolage 200/340/440),
+pill buttons with variants, card variants, rows, chips, marks, banners, a custom
+switch, radio/checkbox choices, segmented control, meter/legend, toast, contour art,
+the paper-grain texture and the generated 62-symbol icon set. `Dialog` is a bottom
+sheet with reduced-motion-aware entrance animation. `react-native-svg` is used for
+the icon set and requires a native prebuild/reinstall.
+
+S01 now has the hero layout with the brand mark, contour art, display headline,
+fixed actions and inline storage link. S02 uses the radar intro, explicit scan
+states, sensor option cards, connected key/value card and step-specific fixed
+actions. S03 has the Device app-bar action, connected chip and battery mark, contour
+start disc, pulse card, route/range row list, location banner and centered
+on-phone mark.
+
+Checks: `npm run typecheck`, `npm run lint`, `npm test` (70/70), Prettier on edited
+files, `expo export --platform android` (12 bundled assets). Device rendering,
+font scale 2.0, TalkBack and real sensor flow were NOT RUN; native rebuild is
+required for `react-native-svg`.
+
+## S04–S05 screen pass (2026-10-27)
+
+S04 now uses the live pulse stage with contour art, a large pulse numeral, the
+range readout pill, the 90-second line chart with a shaded range band and gap
+hatching, distance/route stats, state banners, status marks, and the fixed
+Pause/Finish action pair. Finish remains a confirmed bottom sheet; pause, stale
+pulse, sensor loss, missing GPS and low storage have explicit states.
+
+S05 now has the large duration header with the filled session print, a 2×2
+summary stats card, the range meter with percentages, and the coverage line chart
+with time ticks, a shaded range band, gap hatching and a pulse-coverage heading.
+The export action moved to the app-bar icon button; Done is fixed at the bottom.
+Cloud sync remains out of this integration.
+
+Checks: same typecheck, lint, 70 JS tests, Prettier and Android export. Device
+screenshots, chart scrubbing and real-session visual checks were NOT RUN.
+
+## H01–P01 screen pass and P01 sub-screens (2026-10-27)
+
+H01 now uses filled session prints as row thumbnails, a title with duration,
+date, On phone / Not uploaded marks, average pulse from the loaded shape, and
+a chevron. The empty state has the contour illustration and a direct Record
+action. Pagination, cleanup retry and interrupted-session marks remain.
+
+P01 follows the profile row layout: Guest card with a small Sign in button,
+Cloud sync, Range alerts, Appearance with a theme chip, Text size, Overview,
+and How your data is stored. Units, time zone and theme editing moved into the
+Appearance & display sub-screen; Recorder diagnostics is reachable from the
+storage sheet. Range alerts use the updated range sheet with From/To bpm fields,
+an inline validation error and a Vibration/Sound/Silent segmented control.
+
+Checks: typecheck, lint, 70 JS tests, Prettier and Android export passed.
+Device visual checks, TalkBack and the real picker/permission flows were NOT RUN.

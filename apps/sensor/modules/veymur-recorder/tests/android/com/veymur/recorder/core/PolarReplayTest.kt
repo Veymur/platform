@@ -192,6 +192,36 @@ class PolarReplayTest {
         assertNull(r.snapshot.heartRateAt(r.time.elapsedNs).value)
         assertEquals(-100L, r.time.utcMs)
     }
+    @Test fun duplicateSdkHrNotificationsAreIgnoredButLaterSamplesAreKept() {
+        val r = PolarReplay(ReplayTime(1700000000000, 0))
+        assertEquals("rejected:NOT_CONNECTED", at(r, 0, command(1, 0, "start")))
+        at(r, 100, input(2, 100, "connected"))
+        assertEquals("committed", at(r, 200, command(3, 200, "start")))
+        assertEquals("applied", at(r, 1300, hr(4, 1300, 80)))
+        assertEquals("ignored", at(r, 1301, hr(5, 1301, 80)))
+        assertEquals("applied", at(r, 2300, hr(6, 2300, 80)))
+        assertEquals("applied", at(r, 2301, hr(7, 2301, 81)))
+        assertEquals("ignored", at(r, 2302, hr(8, 2302, 81)))
+        assertEquals("committed", at(r, 3300, command(9, 3300, "finish")))
+        assertEquals(3, r.snapshot.hrCount)
+        assertEquals(listOf(80, 80, 81), r.records.map(::JSONObject)
+            .filter { it.getString("kind") == "hr" }
+            .map { it.getJSONObject("payload").getInt("bpm") })
+    }
+
+    @Test fun duplicateInvalidHrIsRejectedOnceAndSecondDisconnectIsIdempotent() {
+        val r = PolarReplay(ReplayTime(1700000000000, 0))
+        at(r, 100, input(1, 100, "connected"))
+        at(r, 200, command(2, 200, "start"))
+        assertEquals("applied", at(r, 300, hr(3, 300, 0)))
+        assertEquals("ignored", at(r, 301, hr(4, 301, 0)))
+        assertEquals("applied", at(r, 400, input(5, 400, "disconnected")))
+        assertEquals("ignored", at(r, 401, input(6, 401, "disconnected")))
+        assertEquals(1, r.records.count { JSONObject(it).getString("kind") == "hr_rejected" })
+        assertEquals(1, r.records.count { JSONObject(it).getString("kind") == "disconnected" })
+        assertEquals(0, r.snapshot.hrCount)
+    }
+
     @Test fun virtualSchedulerOrdersEqualTimesAndRejectsTimeTravel() {
         val t = ReplayTime(100, 0)
         val order = mutableListOf<Int>()

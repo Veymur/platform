@@ -39,10 +39,10 @@ class RecorderModule : Module() {
         Name("VeymurRecorder")
         Events("onSnapshot", "onNetwork")
         AsyncFunction("getModuleInfo") {
-            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 9, "recorderImplemented" to true)
+            mapOf("moduleName" to "VeymurRecorder", "platform" to "android", "contractVersion" to 10, "recorderImplemented" to true)
         }
         AsyncFunction("ensureActivity") { promise: Promise -> main.post {
-            try { requireRecorderActivity(appContext.currentActivity, visible = true); promise.resolve(mapOf("available" to true)) }
+            try { requireRecorderActionActivity(appContext.currentActivity, hostVisible); promise.resolve(mapOf("available" to true)) }
             catch (error: Exception) { reject(promise, error) }
         } }
         AsyncFunction("getSystemInsets") { promise: Promise -> main.post {
@@ -72,7 +72,7 @@ class RecorderModule : Module() {
         AsyncFunction("exportSession") { request: String, promise: Promise -> export("exportSession", promise, request) }
         AsyncFunction("shareExport") { uri: String, promise: Promise -> main.post {
             try {
-                val activity = requireRecorderActivity(appContext.currentActivity, visible = true)
+                val activity = requireRecorderActionActivity(appContext.currentActivity, hostVisible)
                 val parsed = android.net.Uri.parse(uri)
                 if (parsed.scheme != "content" || parsed.authority != "${activity.packageName}.exports")
                     throw RecorderError("INVALID_ARGUMENT", "Use an export URI returned by this app")

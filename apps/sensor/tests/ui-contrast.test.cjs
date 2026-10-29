@@ -45,6 +45,7 @@ const textPairs = [
   ["tide", "bg"],
   ["tide", "raised"],
   ["on-solid", "solid"],
+  ["on-solid", "solid-press"],
   ["ink", "tide-wash"],
   ["ink", "ember-wash"],
 ];
@@ -52,6 +53,8 @@ const markPairs = [
   ["edge", "raised"],
   ["edge", "bg"],
   ["tide-mark", "raised"],
+  ["ember-mark", "raised"],
+  ["dusk-mark", "raised"],
   ["ink-3", "raised"],
   ["ember", "ember-wash"],
 ];
@@ -83,10 +86,12 @@ for (const theme of ["light", "dark"]) {
   });
 }
 
-test("pressed primary button text is AA in light theme and a reported design gap in dark theme", () => {
-  assert.ok(
-    contrast(tokens.light["on-solid"], tokens.light["solid-press"]) >= 4.5,
-  );
-  const dark = contrast(tokens.dark["on-solid"], tokens.dark["solid-press"]);
-  assert.ok(dark >= 3 && dark < 4.5, dark.toFixed(2));
+test("pressed primary button text meets AA in both themes", () => {
+  for (const theme of ["light", "dark"]) {
+    const ratio = contrast(
+      tokens[theme]["on-solid"],
+      tokens[theme]["solid-press"],
+    );
+    assert.ok(ratio >= 4.5, `${theme} pressed primary: ${ratio.toFixed(2)}`);
+  }
 });

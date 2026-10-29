@@ -80,8 +80,8 @@ def verify_pulse_csv(path):
         if record["usable"] not in ("true", "false"):
             raise ExportError(f"line {index}: usable must be true or false")
         if record["usable"] == "true":
-            if active is None or until is None or until <= active or bpm <= 0:
-                raise ExportError(f"line {index}: usable row needs a positive interval")
+            if active is None or until is None or until < active or bpm <= 0:
+                raise ExportError(f"line {index}: usable row needs an interval that does not end before it starts")
             if record["exclusion_reasons"]:
                 raise ExportError(f"line {index}: usable row has exclusion reasons")
             if previous_until is not None and active + TIME_TOLERANCE_S < previous_until:

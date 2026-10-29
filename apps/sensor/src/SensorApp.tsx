@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  BackHandler,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  View,
-} from "react-native";
+import { BackHandler, Modal, Platform, StatusBar, View } from "react-native";
 import { DiagnosticRecorderScreen } from "./screens/DiagnosticRecorderScreen";
 import { ConnectScreen } from "./screens/product/ConnectScreen";
 import { HistoryScreen } from "./screens/product/HistoryScreen";
@@ -21,10 +13,17 @@ import { ProductProvider, useProduct } from "./product/ProductContext";
 import { withoutErrorCode } from "./product/sessionMath";
 import { routePermissionGranted } from "./recorder/permissions";
 import { ThemeProvider, useTheme } from "./ui/Theme";
-import { Action, Label, Status, Warning } from "./ui/components";
+import { Action, Status, Warning } from "./ui/components";
+import { Icon } from "./ui/Icon";
+import { Screen, TabBar } from "./ui/Screen";
 import { useInsets } from "./ui/Insets";
 
 const tabs = ["Record", "History", "Profile"] as const;
+const tabIcons = {
+  Record: "record",
+  History: "history",
+  Profile: "profile",
+} as const;
 type Tab = (typeof tabs)[number];
 type Overlay =
   | { kind: "summary"; sessionId: string; afterFinish: boolean }
@@ -56,6 +55,7 @@ function Shell() {
   const [rangeEditor, setRangeEditor] = useState(false);
   const [diagnostics, setDiagnostics] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+  const [showWelcome, setShowWelcome] = useState(false);
   const acknowledgedSave = useRef<string | null>(null);
   const routeRestored = useRef(false);
   useEffect(() => {
@@ -112,48 +112,64 @@ function Shell() {
   const body = () => {
     if (Platform.OS !== "android")
       return (
-        <Warning
-          title="This phone is not supported yet"
-          detail="veymur/sensor currently records on Android only."
-        />
+        <Screen>
+          <Warning
+            title="This phone is not supported yet"
+            detail="veymur/sensor currently records on Android only."
+          />
+        </Screen>
       );
     if (!snapshot)
-      return recorder.error ? (
-        <>
-          <Warning
-            title="The recorder is not available"
-            detail={withoutErrorCode(recorder.error)}
-          />
-          <Action
-            title="Try again"
-            onPress={() => {
-              void controller.retry();
-            }}
-          />
-        </>
-      ) : (
-        <Status title="Starting the recorder…" />
+      return (
+        <Screen>
+          {recorder.error ? (
+            <>
+              <Warning
+                title="The recorder is not available"
+                detail={withoutErrorCode(recorder.error)}
+              />
+              <Action
+                title="Try again"
+                onPress={() => {
+                  void controller.retry();
+                }}
+              />
+            </>
+          ) : (
+            <Status title="Starting the recorder…" />
+          )}
+        </Screen>
       );
     if (!snapshot.ready)
-      return <Status title="Preparing storage on this phone…" />;
+      return (
+        <Screen>
+          <Status title="Preparing storage on this phone…" />
+        </Screen>
+      );
     if (!preferences.loaded)
-      return preferences.error ? (
-        <>
-          <Warning
-            title="Couldn't read your settings"
-            detail={withoutErrorCode(preferences.error)}
-          />
-          <Action
-            title="Try again"
-            onPress={() => {
-              void preferences.reload();
-            }}
-          />
-        </>
-      ) : (
-        <Status title="Loading your settings…" />
+      return (
+        <Screen>
+          {preferences.error ? (
+            <>
+              <Warning
+                title="Couldn't read your settings"
+                detail={withoutErrorCode(preferences.error)}
+              />
+              <Action
+                title="Try again"
+                onPress={() => {
+                  void preferences.reload();
+                }}
+              />
+            </>
+          ) : (
+            <Status title="Loading your settings…" />
+          )}
+        </Screen>
       );
     if (!settings) return <WelcomeScreen />;
+    if (showWelcome)
+      return <WelcomeScreen onContinue={() => setShowWelcome(false)} />;
     if (overlay?.kind === "summary")
       return (
         <SummaryScreen
@@ -197,7 +213,9 @@ function Shell() {
         <ConnectScreen
           onDone={() => setOverlay(null)}
           onBack={
-            snapshot.selectedDeviceId ? () => setOverlay(null) : undefined
+            snapshot.selectedDeviceId
+              ? () => setOverlay(null)
+              : () => setShowWelcome(true)
           }
         />
       );
@@ -209,7 +227,19 @@ function Shell() {
       />
     );
   };
-  const showTabs = settings !== null && overlay?.kind !== "summary";
+  const connectScreen =
+    settings !== null &&
+    tab === "Record" &&
+    !sessionActive &&
+    overlay?.kind !== "summary" &&
+    (overlay?.kind === "connect" ||
+      (!snapshot?.connectedDeviceId && !snapshot?.selectedDeviceId));
+  const showTabs =
+    settings !== null &&
+    !showWelcome &&
+    overlay?.kind !== "summary" &&
+    (!sessionActive || tab !== "Record") &&
+    !connectScreen;
   return (
     <View
       style={{
@@ -222,70 +252,32 @@ function Shell() {
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.bg}
       />
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: (showTabs ? 0 : insets.bottom) + 40,
-          gap: 20,
-        }}
-      >
-        {body()}
-      </ScrollView>
+      <View style={{ flex: 1 }}>{body()}</View>
       {showTabs && (
-        <View
-          accessibilityRole="tablist"
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            padding: 8,
-            paddingBottom: insets.bottom + 8,
-            gap: 8,
-            backgroundColor: colors.raised,
-            borderTopWidth: 1,
-            borderColor: colors.rule,
-          }}
-        >
-          {tabs.map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === value }}
-              accessibilityLabel={
-                value === "Record" && sessionActive
-                  ? "Record, recording in progress"
-                  : value
-              }
-              onPress={() => {
-                setOverlay((current) =>
-                  current?.kind === "connect" ? current : null,
-                );
-                setTab(value);
-              }}
-              style={{
-                flexGrow: 1,
-                flexBasis: 88,
-                minHeight: 48,
-                padding: 8,
-                justifyContent: "center",
-                borderRadius: 10,
-                backgroundColor:
-                  tab === value ? colors["tide-wash"] : colors.raised,
-              }}
-            >
-              <Label
-                style={{
-                  textAlign: "center",
-                  fontWeight: tab === value ? "600" : "400",
-                }}
-              >
-                {tab === value ? "• " : ""}
-                {value}
-                {value === "Record" && sessionActive ? " ●" : ""}
-              </Label>
-            </Pressable>
-          ))}
-        </View>
+        <TabBar
+          items={tabs.map((value) => ({
+            key: value,
+            label: value,
+            active: tab === value,
+            icon: (
+              <Icon
+                name={tabIcons[value]}
+                size={20}
+                color={tab === value ? colors.tide : colors["ink-3"]}
+              />
+            ),
+            accessibilityLabel:
+              value === "Record" && sessionActive
+                ? "Record, recording in progress"
+                : value,
+            onPress: () => {
+              setOverlay((current) =>
+                current?.kind === "connect" ? current : null,
+              );
+              setTab(value);
+            },
+          }))}
+        />
       )}
       <RangeEditor
         visible={rangeEditor}

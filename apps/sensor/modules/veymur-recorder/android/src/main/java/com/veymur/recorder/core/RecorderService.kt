@@ -27,7 +27,8 @@ data class RecorderSnapshot(
     val lastHrElapsed: Long = 0, val lastHrElapsedNs: Long = 0, val recording: Boolean = false, val paused: Boolean = false,
     val hrCount: Int = 0, val gpsCount: Int = 0, val activeMs: Long = 0, val lastCommit: Long = 0,
     val alertsStatus: String = "disabled", val storageWarning: String? = null,
-    val revision: Long = 0, val errorCode: String? = null, val recovered: Int = 0, val gpsStatus: String = "Route disabled", val ready: Boolean = false
+    val revision: Long = 0, val errorCode: String? = null, val recovered: Int = 0, val gpsStatus: String = "Route disabled",
+    val gpsDistanceM: Double? = null, val ready: Boolean = false
 )
 
 class RecorderService : Service() {
@@ -54,6 +55,7 @@ class RecorderService : Service() {
     private val clock = RecordingClock { SystemClock.elapsedRealtime() }
     private lateinit var api: PolarBleApi
     private val observationNormalizer = ObservationNormalizer()
+    private val liveGpsDistance = LiveGpsDistance()
     private val polarInputs: PolarInputBoundary = PolarInputBoundary(
         utcNow = { System.currentTimeMillis() }, elapsedNowNs = { SystemClock.elapsedRealtimeNanos() },
         dispatch = ::enqueuePolarInput)
@@ -97,6 +99,7 @@ class RecorderService : Service() {
                     if (receipt.elapsed_ns < gpsExpectedSinceNs || (input.elapsed_ns != null && input.elapsed_ns < gpsExpectedSinceNs)) return@enqueue
                     val sample = try { observationNormalizer.gps(input, receipt) }
                     catch (error: InvalidObservation) {
+                        liveGpsDistance.breakLine()
                         record("gps_rejected", JSONObject().put("reason", error.reason)
                             .put("latitude_raw", input.latitude.toString()).put("longitude_raw", input.longitude.toString())
                             .put("received_utc_ms", receipt.utc_ms).put("received_elapsed_ns", receipt.elapsed_ns.toString())
@@ -110,14 +113,17 @@ class RecorderService : Service() {
                         .put("observed_utc_ms", input.utc_ms ?: JSONObject.NULL)
                         .put("source_elapsed_nanos", input.elapsed_ns ?: JSONObject.NULL).put("mock", input.mock)
                         .put("observation_metadata", observationMetadata(sample.time, sample.quality)))
+                    liveGpsDistance.offer(sample, gpsFixNs(sample, receipt))
                     lastGpsReceiptNs = receipt.elapsed_ns; gpsGap = false
-                    snapshot = snapshot.copy(gpsCount = snapshot.gpsCount + 1, gpsStatus = "Saving coordinates")
+                    snapshot = snapshot.copy(gpsCount = snapshot.gpsCount + 1, gpsStatus = "Saving coordinates",
+                        gpsDistanceM = liveGpsDistance.distanceM)
                 }
             }
         }
         override fun onProviderDisabled(provider: String) = enqueue {
             if (!routeEnabled || !snapshot.recording || snapshot.paused) return@enqueue
             gpsGap = true
+            liveGpsDistance.breakLine()
             snapshot = snapshot.copy(gpsStatus = "GPS disabled; heart rate recording continues")
             record("gps_unavailable", JSONObject().put("provider", provider).put("stream", "gps")
                 .put("quality_flags", org.json.JSONArray(listOf("missing"))))
@@ -125,6 +131,7 @@ class RecorderService : Service() {
         override fun onProviderEnabled(provider: String) = enqueue {
             if (routeEnabled && snapshot.recording && !snapshot.paused) {
                 gpsGap = false; gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L
+                liveGpsDistance.breakLine()
                 snapshot = snapshot.copy(gpsStatus = "Waiting for coordinates")
             }
         }
@@ -212,6 +219,7 @@ class RecorderService : Service() {
         val denied = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
         if (denied || SystemClock.elapsedRealtimeNanos() - maxOf(lastGpsReceiptNs, gpsExpectedSinceNs) > 10_000_000_000L) {
             gpsGap = true
+            liveGpsDistance.breakLine()
             record("gps_unavailable", JSONObject().put("reason", if (denied) "permission_denied" else "coordinates_stale"))
             snapshot = snapshot.copy(gpsStatus = if (denied) "Location permission denied; heart rate recording continues" else "No recent coordinates; heart rate recording continues")
         }
@@ -329,9 +337,11 @@ class RecorderService : Service() {
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             holdResources()
             workerCommand(done, command) {
+                liveGpsDistance.reset()
                 configureRangeAlerts()
                 val id = control.start(route, routeEnabled, JSONObject().put("route_requested", route).put("route_enabled", routeEnabled)
                     .put("device_info", JSONObject(deviceDetails.toMap())).put("phone_battery_percent", phoneBattery()))
+                snapshot = snapshot.copy(gpsDistanceM = liveGpsDistance.distanceM)
                 alertSegmentStartNs = SystemClock.elapsedRealtimeNanos()
                 gpsExpectedSinceNs = alertSegmentStartNs; lastGpsReceiptNs = 0L; gpsGap = false
                 main.post { starting = false; if (routeEnabled && snapshot.recording && !snapshot.paused) requestGps() }
@@ -429,6 +439,7 @@ class RecorderService : Service() {
                                 control.pauseOrResume(name)
                                 if (previousState != engine!!.state) {
                                     resetRangeAlerts()
+                                    liveGpsDistance.breakLine()
                                     gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L; gpsGap = false
                                     snapshot = snapshot.copy(gpsStatus = if (!routeEnabled) "Route disabled" else if (snapshot.paused) "Paused" else "Waiting for coordinates")
                                 }
@@ -487,11 +498,21 @@ class RecorderService : Service() {
             "devices" to snapshot.devices.map { mapOf("id" to it.deviceId, "name" to it.name, "address" to it.address) },
             "hrCount" to snapshot.hrCount, "gpsCount" to snapshot.gpsCount, "activeMs" to snapshot.activeMs,
             "lastCommitUtcMs" to snapshot.lastCommit.takeIf { it > 0 }, "gpsStatus" to snapshot.gpsStatus,
+            "gpsDistanceM" to snapshot.gpsDistanceM,
             "alertsStatus" to snapshot.alertsStatus, "storageWarning" to snapshot.storageWarning,
             "selectedDeviceId" to selected, "discoveryActive" to (activeSearchId != null),
             "routeEnabled" to routeEnabled, "recoveredCount" to snapshot.recovered, "errorCode" to snapshot.errorCode, "diagnostic" to diagnosticDto())
     }
     private fun phoneBattery(): Int = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+
+    /** Same fix-time admission as JournalAggregateReader: only a verified source fix is usable. */
+    private fun gpsFixNs(sample: NormalizedGps, receipt: Receipt): Long? {
+        val source = sample.time.source_elapsed_realtime_ns?.toLongOrNull()
+        val observed = sample.time.observed_monotonic_offset_ms
+        return source?.takeIf {
+            it >= 0 && it <= receipt.elapsed_ns && observed != null && it / 1_000_000 == observed
+        }
+    }
     private fun diagnosticDto(
         status: DiagnosticCaptureStatus? = diagnosticCapture?.status ?: diagnosticStatus,
         error: String? = diagnosticError,

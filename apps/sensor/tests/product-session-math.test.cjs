@@ -215,6 +215,28 @@ test("live chart shows only fresh readings in its window", () => {
     max: 80,
     gaps: 1,
   });
+  assert.deepEqual(
+    plain(
+      m.liveChartValues(
+        [
+          { atMs: 1000, bpm: 80 },
+          { atMs: 3000, bpm: null },
+        ],
+        4000,
+        4000,
+        2,
+      ),
+    ),
+    [80, null],
+  );
+});
+
+test("displayed active time interpolates only while recording and is capped", () => {
+  assert.equal(m.displayActiveMs(1000, true, 5000, 5250), 1250);
+  assert.equal(m.displayActiveMs(1000, true, 5000, 8000), 2500);
+  assert.equal(m.displayActiveMs(1000, false, 5000, 8000), 1000);
+  assert.equal(m.displayActiveMs(1000, true, 6000, 5000), 1000);
+  assert.equal(m.displayActiveMs(1000, true, 5000, 5500, 0), 1000);
 });
 
 test("formatting keeps unknown values as text and uses the selected units", () => {

@@ -61,6 +61,9 @@ const nonnegative = (value: unknown): value is number =>
 const nullableString = (value: unknown) =>
   value === null || typeof value === "string";
 const nullableNumber = (value: unknown) => value === null || nonnegative(value);
+const nullableDistance = (value: unknown) =>
+  value === null ||
+  (typeof value === "number" && Number.isFinite(value) && value >= 0);
 
 export function decodeDiagnosticStatus(value: unknown): DiagnosticStatus {
   const fail = () => {
@@ -163,6 +166,7 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
     !nonnegative(v.activeMs) ||
     !nullableNumber(v.lastCommitUtcMs) ||
     typeof v.gpsStatus !== "string" ||
+    !nullableDistance(v.gpsDistanceM) ||
     typeof v.routeEnabled !== "boolean" ||
     !nonnegative(v.recoveredCount) ||
     !(
@@ -207,6 +211,7 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
     activeMs: v.activeMs,
     lastCommitUtcMs: v.lastCommitUtcMs,
     gpsStatus: v.gpsStatus,
+    gpsDistanceM: v.gpsDistanceM,
     routeEnabled: v.routeEnabled,
     recoveredCount: v.recoveredCount,
     errorCode: v.errorCode,

@@ -176,7 +176,7 @@ export function Action({
           paddingHorizontal:
             kind === "quiet" ? spacing.section / 2 : size === "sm" ? 16 : 24,
           opacity: disabled ? 0.45 : 1,
-          transform: pressed ? [{ scale: 0.98 }] : undefined,
+          transform: pressed ? [{ scale: 0.98 }] : [],
         },
         block ? styles.actionBlock : styles.actionInline,
         style,

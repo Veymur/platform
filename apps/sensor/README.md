@@ -607,3 +607,32 @@ granted.
 
 Checks: typecheck, lint, 70 JS tests and Expo export. Native rebuild and device
 verification of the adapter transition are still required.
+
+Completion of the fallback (2026-11-19, plan item 2.3):
+
+- One state model (`src/recorder/bluetoothAvailability.ts`): adapter off, Bluetooth
+  permission denied, still checking, unknown adapter state and on are separate.
+  Adapter off wins over the permission screen; automatic search runs at most once per
+  S02 visit and never while Bluetooth is off, not allowed, or a sensor is selected,
+  connected or being searched for.
+- Guards on both sides: `RecorderController.search/connect` reject with
+  `BLUETOOTH_OFF` before any permission request or native call while the snapshot
+  says Bluetooth is off; the stale `BLUETOOTH_OFF` error clears when the adapter is
+  back on. Native `search()`/`connect()` keep their own check.
+- Native: the adapter broadcast is handled on the main thread together with
+  search/connect commands, so a command and the switch-off cannot interleave. Turning
+  Bluetooth off cancels the active search and, outside a session, the pending or
+  automatic connection of the selected sensor; the selection is kept for an explicit
+  reconnect. During a session the selected sensor keeps the SDK reconnection rules.
+  `disconnected`/`connecting` callbacks no longer overwrite "Bluetooth is off". The
+  adapter state is re-read when the app returns to the foreground.
+- S02: "Bluetooth is off" with "Open Bluetooth settings" and "Not now"; no promise of
+  live pulse. After Bluetooth comes back following an interrupted search S02 shows
+  "Bluetooth is on" with an explicit "Search for sensors" instead of "No sensors
+  found". S03 shows a Bluetooth-off banner with the settings action and hides
+  "Reconnect selected sensor" while the adapter is off. S04 replaces "Trying to
+  restore it" with a Bluetooth-off banner; pause, finish, saving and route stay
+  available and no previous pulse is shown as current.
+
+Checks: typecheck, lint, JS tests, `PolarReplayTest` with a Bluetooth-off-during-
+recording replay. Physical-phone checks of the adapter transitions are still required.

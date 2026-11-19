@@ -222,6 +222,37 @@ class PolarReplayTest {
         assertEquals(0, r.snapshot.hrCount)
     }
 
+    @Test fun bluetoothOffDuringRecordingDropsCurrentPulseKeepsStatusAndSessionCanFinish() {
+        val r = PolarReplay(ReplayTime(1700000000000, 0))
+        at(r, 100, input(1, 100, "connected"))
+        assertEquals("committed", at(r, 200, command(2, 200, "start")))
+        at(r, 300, hr(3, 300, 92))
+        assertEquals(92, r.snapshot.heartRateAt(r.time.elapsedNs).value)
+        assertEquals("applied", at(r, 400, input(4, 400, "bluetooth", JSONObject().put("powered", false))))
+        assertEquals(false, r.snapshot.bluetoothEnabled)
+        assertNull(r.snapshot.connected)
+        assertNull(r.snapshot.heartRateAt(r.time.elapsedNs).value)
+        assertEquals("missing", r.snapshot.heartRateAt(r.time.elapsedNs).status)
+        at(r, 500, input(5, 500, "disconnected"))
+        at(r, 600, input(6, 600, "connecting"))
+        assertEquals("Bluetooth is off", r.snapshot.status)
+        at(r, 5000, input(7, 5000, "bluetooth", JSONObject().put("powered", true)))
+        assertEquals(true, r.snapshot.bluetoothEnabled)
+        assertNull(r.snapshot.heartRateAt(r.time.elapsedNs).value)
+        at(r, 5100, input(8, 5100, "connecting"))
+        assertEquals("Connecting to SYNTHETIC…", r.snapshot.status)
+        at(r, 5200, input(9, 5200, "connected"))
+        assertNull(r.snapshot.heartRateAt(r.time.elapsedNs).value)
+        at(r, 5300, hr(10, 5300, 95))
+        assertEquals("committed", at(r, 6000, command(11, 6000, "finish")))
+        assertEquals("completed", r.session.state)
+        val rows = r.records.map(::JSONObject)
+        assertEquals(listOf(false, true), rows.filter { it.getString("kind") == "bluetooth" }
+            .map { it.getJSONObject("payload").getBoolean("powered") })
+        assertEquals(listOf(92, 95), rows.filter { it.getString("kind") == "hr" }
+            .map { it.getJSONObject("payload").getInt("bpm") })
+    }
+
     @Test fun virtualSchedulerOrdersEqualTimesAndRejectsTimeTravel() {
         val t = ReplayTime(100, 0)
         val order = mutableListOf<Int>()

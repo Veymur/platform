@@ -37,6 +37,7 @@ const errorText = (error: unknown) =>
   error instanceof RecorderClientError
     ? `${error.code}: ${error.message}`
     : String(error);
+const bluetoothOffPrefix = "BLUETOOTH_OFF:";
 
 /** No recording timer or lifecycle commands: this controller only renders native facts and user intent. */
 export class RecorderController {
@@ -86,9 +87,13 @@ export class RecorderController {
           (capture) => capture.captureId !== snapshot.diagnostic.captureId,
         );
         if (snapshot.diagnostic.captureId) captures.push(snapshot.diagnostic);
+        const bluetoothErrorResolved =
+          snapshot.bluetoothEnabled !== false &&
+          this.view.error?.startsWith(bluetoothOffPrefix) === true;
         this.update({
           snapshot,
           captures,
+          ...(bluetoothErrorResolved ? { error: null } : {}),
           selectedCaptureId:
             this.view.selectedCaptureId ?? snapshot.diagnostic.captureId,
           ...(snapshot.sessionId
@@ -183,8 +188,16 @@ export class RecorderController {
       this.update({ pending: null });
     }
   }
+  private rejectWhileBluetoothOff(action: string) {
+    if (this.view.snapshot?.bluetoothEnabled === false)
+      throw new RecorderClientError(
+        "BLUETOOTH_OFF",
+        `Bluetooth is off. Turn it on to ${action}.`,
+      );
+  }
   search = () =>
     this.run("Search", async (current) => {
+      this.rejectWhileBluetoothOff("search for a sensor");
       await this.client.ensureActivity();
       const granted = await this.permissions.requestBluetooth();
       if (!current()) return;
@@ -203,6 +216,7 @@ export class RecorderController {
     });
   connect = (id: string) =>
     this.run("Connect", async (current) => {
+      this.rejectWhileBluetoothOff("connect a sensor");
       if (!(await this.permissions.bluetoothGranted()))
         throw new RecorderClientError(
           "PERMISSION_DENIED",

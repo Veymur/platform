@@ -38,7 +38,7 @@ import {
 } from "../../product/sessionMath";
 import type { RecorderSnapshot } from "../../recorder/types";
 import { hrReplayEnabled } from "../../dev/hrReplay";
-import { OpenSettingsAction } from "./shared";
+import { OpenBluetoothSettingsAction, OpenSettingsAction } from "./shared";
 
 function useSessionRanges(
   sessionId: string | null,
@@ -413,7 +413,17 @@ export function SessionScreen() {
           detail="Timer and route recording are stopped. Resuming starts a new segment, without a line across the pause."
         />
       )}
-      {!connected && !paused && (
+      {snapshot.bluetoothEnabled === false && (
+        <Banner
+          live
+          tone="dusk"
+          icon="bluetooth"
+          title="Bluetooth is off"
+          detail="No pulse is being received. Turn Bluetooth on to reconnect the sensor. You can pause or finish; the part recorded so far and the route stay saved."
+          action={<OpenBluetoothSettingsAction />}
+        />
+      )}
+      {!connected && !paused && snapshot.bluetoothEnabled !== false && (
         <Banner
           live
           tone="dusk"

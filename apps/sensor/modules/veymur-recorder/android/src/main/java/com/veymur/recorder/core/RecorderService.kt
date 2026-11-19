@@ -89,20 +89,28 @@ class RecorderService : Service() {
     private var bluetoothReceiverRegistered = false
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
-            enqueue {
-                val enabled = bluetoothEnabled()
-                snapshot = snapshot.copy(bluetoothEnabled = enabled)
-                if (enabled == false) {
-                    activeSearchId = null
-                    searchJob?.cancel(); searchJob = null
-                    snapshot = snapshot.copy(devices = emptyList(), connected = null, hr = null, status = "Bluetooth is off")
-                    resetRangeAlerts()
-                } else if (enabled == true && !snapshot.recording && snapshot.connected == null) {
-                    snapshot = snapshot.copy(status = "Turn on your sensor and search for it")
-                }
+            if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) bluetoothStateChanged()
+        }
+    }
+    private fun bluetoothStateChanged() {
+        val enabled = bluetoothEnabled()
+        if (enabled == false) stopBluetoothActivity()
+        enqueue {
+            snapshot = snapshot.copy(bluetoothEnabled = enabled)
+            if (enabled == false) {
+                snapshot = snapshot.copy(devices = emptyList(), connected = null, hr = null, status = "Bluetooth is off")
+                resetRangeAlerts()
+            } else if (enabled == true && !snapshot.recording && snapshot.connected == null) {
+                snapshot = snapshot.copy(status = "Turn on your sensor and search for it")
             }
         }
+    }
+    private fun stopBluetoothActivity() {
+        activeSearchId = null
+        searchJob?.cancel(); searchJob = null
+        val pendingDevice = selected
+        if (pendingDevice != null && session == null && !starting && ::api.isInitialized)
+            try { api.disconnectFromDevice(pendingDevice) } catch (_: Exception) { }
     }
     private val gps by lazy { getSystemService(LocationManager::class.java) }
     private val locations = object : LocationListener {
@@ -391,6 +399,7 @@ class RecorderService : Service() {
         if (lastActivityVisible == visible) return
         lastActivityVisible = visible
         if (::api.isInitialized && visible && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) api.foregroundEntered()
+        if (visible && snapshot.ready && bluetoothEnabled() != snapshot.bluetoothEnabled) bluetoothStateChanged()
         enqueue { record(if (visible) "activity_foreground" else "activity_background", JSONObject()) }
     }
     private fun requestGps() {

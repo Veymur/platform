@@ -26,7 +26,12 @@ import { fonts } from "../../ui/tokens";
 import { useProduct } from "../../product/ProductContext";
 import { routePermissionGranted } from "../../recorder/permissions";
 import { formatAge, withoutErrorCode } from "../../product/sessionMath";
-import { Muted, OpenSettingsAction, rangesSummary } from "./shared";
+import {
+  Muted,
+  OpenBluetoothSettingsAction,
+  OpenSettingsAction,
+  rangesSummary,
+} from "./shared";
 
 function RangeRow({
   summary,
@@ -84,6 +89,7 @@ export function ReadyScreen({
   if (!snapshot) return null;
   const busy = pending !== null;
   const connected = snapshot.connectedDeviceId !== null;
+  const bluetoothOff = snapshot.bluetoothEnabled === false;
   const fresh = snapshot.hrStatus === "fresh" && snapshot.hr !== null;
   const starting = pending === "Start";
   const canStart = snapshot.ready && !busy && connected;
@@ -161,7 +167,9 @@ export function ReadyScreen({
           label={
             connected
               ? "Polar Verity Sense · connected"
-              : "Sensor not connected"
+              : bluetoothOff
+                ? "Bluetooth is off"
+                : "Sensor not connected"
           }
           tone={connected ? "tide" : "neutral"}
           icon={connected ? "check" : "bluetooth"}
@@ -178,7 +186,17 @@ export function ReadyScreen({
           />
         )}
       </View>
-      {!connected && snapshot.selectedDeviceId && (
+      {bluetoothOff && (
+        <Banner
+          live
+          tone="dusk"
+          icon="bluetooth"
+          title="Bluetooth is off"
+          detail="Turn on Bluetooth to reconnect your sensor. The app is not searching or connecting while it is off."
+          action={<OpenBluetoothSettingsAction onError={setSaveError} />}
+        />
+      )}
+      {!connected && !bluetoothOff && snapshot.selectedDeviceId && (
         <Action
           title="Reconnect selected sensor"
           size="sm"

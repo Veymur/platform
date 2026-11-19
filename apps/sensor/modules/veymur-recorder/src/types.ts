@@ -18,7 +18,8 @@ export type RecorderErrorCode =
   | "DISCOVERY_ERROR"
   | "STORAGE_ERROR"
   | "NO_SESSIONS"
-  | "DIAGNOSTIC_ERROR";
+  | "DIAGNOSTIC_ERROR"
+  | "BLUETOOTH_OFF";
 export type SessionState =
   | "preparation"
   | "recording"

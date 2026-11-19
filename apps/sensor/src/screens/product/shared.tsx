@@ -99,6 +99,34 @@ export function OpenSettingsAction({
     />
   );
 }
+export function openBluetoothSettings(): Promise<void> {
+  return Linking.sendIntent("android.settings.BLUETOOTH_SETTINGS").catch(() =>
+    Linking.openSettings(),
+  );
+}
+export const bluetoothSettingsError =
+  "Could not open Bluetooth settings. Open them from your phone settings.";
+export function OpenBluetoothSettingsAction({
+  onError,
+  prominent = false,
+}: {
+  onError?: (message: string) => void;
+  prominent?: boolean;
+}) {
+  return (
+    <Action
+      title="Open Bluetooth settings"
+      size={prominent ? "lg" : "sm"}
+      variant={prominent ? "primary" : "secondary"}
+      block={prominent}
+      onPress={() => {
+        void openBluetoothSettings().catch(() =>
+          onError?.(bluetoothSettingsError),
+        );
+      }}
+    />
+  );
+}
 export function rangesSummary(preferences: Preferences | null): string {
   const bounds = boundsFromRanges(preferences?.hr_ranges?.ranges);
   const settings = preferences?.settings;

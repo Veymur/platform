@@ -24,6 +24,11 @@ confirmation above the tab bar. `Grain.tsx` draws the repeating paper texture be
 screen body. `Contours.tsx` draws the deterministic contour art used by S01–S04, and `AppMark.tsx` is
 the brand mark from the design package. `LineChart.tsx` is the SVG pulse chart with
 grid ticks, shaded range band, gap hatching, isolated points and an optional end dot.
+`heartRateScale.ts` derives its vertical scale from the usable pulse values and the range
+band (rounded ticks, no fixed 150 bpm ceiling); S04 keeps the live scale stable between samples.
+`chartGaps.ts` finds the runs of missing pulse after the covered start of the window. S04
+holds a reading only while it is fresh (5 s), does not mark the time before the first reading
+as a gap and hides the dashed gap edges; S05 keeps the edges for real gaps.
 `PrintShape.tsx` draws the filled radial session print used by S05 and H01. `HrColumns.tsx`
 retains the older column projection for screens that have not moved to the line chart yet.
 `SensorApp.tsx` hosts the stage 4 product screens (see the app README); the diagnostic

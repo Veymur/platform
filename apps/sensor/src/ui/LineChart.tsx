@@ -9,6 +9,8 @@ import Svg, {
   Rect,
   Text as SvgText,
 } from "react-native-svg";
+import { chartGapRuns } from "./chartGaps";
+import { heartRateScale } from "./heartRateScale";
 import { useTheme } from "./Theme";
 import { fonts } from "./tokens";
 
@@ -26,6 +28,8 @@ export function LineChart({
   gapLabel = "No pulse",
   endDot = false,
   emptyLabel = "No pulse data",
+  firstCoveredIndex = 0,
+  gapEdges = true,
 }: {
   values: readonly (number | null)[];
   height?: number;
@@ -38,6 +42,8 @@ export function LineChart({
   gapLabel?: string;
   endDot?: boolean;
   emptyLabel?: string;
+  firstCoveredIndex?: number;
+  gapEdges?: boolean;
 }) {
   const { colors } = useTheme();
   const [width, setWidth] = useState(320);
@@ -48,30 +54,15 @@ export function LineChart({
   const w = Math.max(width, 200);
   const plotWidth = Math.max(1, w - pad.left - pad.right);
   const plotHeight = Math.max(1, height - pad.top - pad.bottom);
-  const lo =
-    yMin ?? (valid.length ? Math.floor((Math.min(...valid) - 6) / 10) * 10 : 0);
-  const hi =
-    yMax ?? (valid.length ? Math.ceil((Math.max(...valid) + 6) / 10) * 10 : 1);
+  const automaticScale = heartRateScale(values, band ?? null);
+  const lo = yMin ?? automaticScale?.min ?? 0;
+  const hi = yMax ?? automaticScale?.max ?? 1;
   const span = Math.max(1, hi - lo);
   const x = (index: number) =>
     pad.left + (index / Math.max(values.length - 1, 1)) * plotWidth;
   const y = (value: number) => pad.top + (1 - (value - lo) / span) * plotHeight;
-  const ticks =
-    yTicks ??
-    [lo, Math.round((lo + hi) / 2), hi].filter(
-      (value, index, all) => all.indexOf(value) === index,
-    );
-  const gapRuns: { from: number; to: number }[] = [];
-  let gapStart: number | null = null;
-  values.forEach((value, index) => {
-    if (value === null && gapStart === null) gapStart = index;
-    if (value !== null && gapStart !== null) {
-      gapRuns.push({ from: gapStart, to: index - 1 });
-      gapStart = null;
-    }
-  });
-  if (gapStart !== null)
-    gapRuns.push({ from: gapStart, to: values.length - 1 });
+  const ticks = yTicks ?? automaticScale?.ticks ?? [lo, hi];
+  const gapRuns = chartGapRuns(values, firstCoveredIndex);
   let line = "";
   let runStart: number | null = null;
   values.forEach((value, index) => {
@@ -98,6 +89,10 @@ export function LineChart({
       ? [index]
       : [],
   );
+  const accessibleLabel =
+    valid.length === 0
+      ? `${label}. ${emptyLabel}.`
+      : `${label}. Pulse from ${Math.min(...valid)} to ${Math.max(...valid)} bpm, ${gapRuns.length} gap${gapRuns.length === 1 ? "" : "s"}.`;
   if (valid.length === 0)
     return (
       <View style={[styles.container, { height }]}>
@@ -111,7 +106,7 @@ export function LineChart({
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       accessible
       accessibilityRole="image"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibleLabel}
       style={[styles.container, { height }]}
     >
       <Svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`}>
@@ -200,37 +195,39 @@ export function LineChart({
             />
           );
         })}
-        {gapRuns.map((run) => {
-          const x0 = run.from === 0 ? x(0) : x(run.from - 1);
-          return (
-            <Line
-              key={`gap-edge-${run.from}-${run.to}`}
-              x1={x0}
-              x2={x0}
-              y1={pad.top}
-              y2={height - pad.bottom}
-              stroke={colors["ink-3"]}
-              strokeWidth={1}
-              strokeDasharray="3 3"
-            />
-          );
-        })}
-        {gapRuns.map((run) => {
-          const x1 =
-            run.to >= values.length - 1 ? x(values.length - 1) : x(run.to);
-          return (
-            <Line
-              key={`gap-right-${run.from}-${run.to}`}
-              x1={x1}
-              x2={x1}
-              y1={pad.top}
-              y2={height - pad.bottom}
-              stroke={colors["ink-3"]}
-              strokeWidth={1}
-              strokeDasharray="3 3"
-            />
-          );
-        })}
+        {gapEdges &&
+          gapRuns.map((run) => {
+            const x0 = run.from === 0 ? x(0) : x(run.from - 1);
+            return (
+              <Line
+                key={`gap-edge-${run.from}-${run.to}`}
+                x1={x0}
+                x2={x0}
+                y1={pad.top}
+                y2={height - pad.bottom}
+                stroke={colors["ink-3"]}
+                strokeWidth={1}
+                strokeDasharray="3 3"
+              />
+            );
+          })}
+        {gapEdges &&
+          gapRuns.map((run) => {
+            const x1 =
+              run.to >= values.length - 1 ? x(values.length - 1) : x(run.to);
+            return (
+              <Line
+                key={`gap-right-${run.from}-${run.to}`}
+                x1={x1}
+                x2={x1}
+                y1={pad.top}
+                y2={height - pad.bottom}
+                stroke={colors["ink-3"]}
+                strokeWidth={1}
+                strokeDasharray="3 3"
+              />
+            );
+          })}
         {gapRuns.map((run) => {
           const x0 = run.from === 0 ? x(0) : x(run.from - 1);
           const x1 =

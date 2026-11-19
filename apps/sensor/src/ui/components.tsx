@@ -487,6 +487,7 @@ export function Banner({
           : colors["ink-2"];
   return (
     <View
+      accessibilityRole={live ? "alert" : undefined}
       accessibilityLiveRegion={live ? "polite" : "none"}
       style={[styles.banner, { backgroundColor: background }]}
     >
@@ -559,6 +560,7 @@ export function Chip({
       {icon && <Icon name={icon} size={16} color={color} />}
       <Label
         style={{
+          flexShrink: 1,
           color,
           fontFamily: fonts.uiMedium,
           fontSize: 14,
@@ -708,7 +710,9 @@ export function Row({
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? title}
+        accessibilityLabel={
+          accessibilityLabel ?? (meta ? `${title}. ${meta}` : title)
+        }
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}

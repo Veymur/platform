@@ -1,6 +1,6 @@
 # Veymur Sensor — Android diagnostic recorder
 
-Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=10/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, live GPS distance, start/pause/resume/confirmed finish, session ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder/recorder-bridge-contract.md).
+Migration stages 3–6 provide the Android host, migrated Kotlin core, command/state bridge and React Native diagnostic screen. `getModuleInfo` reports contractVersion=11/recorderImplemented=true; the screen supports discovery, explicit device selection, optional route, live GPS distance, start/pause/resume/confirmed finish, session ZIP sharing and permission settings. Bluetooth is requested on search, location on enabling the route, and notification denial does not block recording. iOS remains unsupported. See the [diagnostic UI report](../../docs/recorder/recorder-diagnostic-ui.md) and [bridge contract](../../docs/recorder/recorder-bridge-contract.md).
 
 Polar diagnostic stages D1–D2 now add explicit immutable SDK input events before recorder processing, separate receipt/worker timing, all 16 base callback signatures and unfiltered discovery results. D3 provides the native encrypted journal and D4 adds explicit capture controls; D5 adds capture export and deletion: the current Export last session button still produces the existing session ZIP. The native test sink is disabled by default. See the [input contract](../../docs/diagnostic/polar-diagnostic-contract.md) and [implementation checks](../../docs/diagnostic/polar-diagnostic-implementation.md). Rebuild native after these changes; existing stage-8 APKs do not contain this boundary.
 
@@ -89,7 +89,7 @@ adb -s emulator-5554 shell am start -W -a android.intent.action.VIEW \
 adb -s emulator-5554 logcat -d -s ReactNativeJS:I '*:S'
 ```
 
-Since stage 4 the app opens the product screens (S01 on a fresh install); the diagnostic screen is under Profile → Recorder diagnostics. The typed handshake requires contractVersion=10/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
+Since stage 4 the app opens the product screens (S01 on a fresh install); the diagnostic screen is under Profile → Recorder diagnostics. The typed handshake requires contractVersion=11/recorderImplemented=true. The earlier stage-3 placeholder and RECORDER_MODULE_OK console checks are historical, not current launch criteria. On the first development-client launch, dismiss Expo's developer-menu introduction to reach the app.
 
 An incompatible native binary produces a rebuild/reinstall error. Expo Go cannot load `VeymurRecorder`. Native Kotlin, dependencies, registration, permissions or plugin/config changes require prebuild and a new installation. JS reload updates only JS. This **debug development APK** uses Metro; it supports the JS reload scenarios. It is separate from the autonomous diagnostic variant below.
 
@@ -204,7 +204,7 @@ Known stage 2 limitations remain: deprecated APIs in Expo/RN, npm audit findings
 
 ### Local history API
 
-`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v10 (local operations were introduced in v6); no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history, deletion confirmation and user CSV/GPX export are added in stage 4. See [local operations contract and verification](../../docs/local-data-operations.md).
+`LocalDataClient` provides paginated `listSessions`, `getSessionDetails`, bounded `readStream`, `getPreferences`, revision-checked `saveSettings`/`saveRanges`, `deleteSession` and `pendingDeletions`. All commands use the native writer through bridge v11 (local operations were introduced in v6); no account/network or screen lifecycle is required. SQL schema v3 adds a durable file-cleanup queue. Details require explicit aggregate parameters; unavailable metrics stay null. Selected ranges are snapshotted at session start. Recording/paused/finishing sessions cannot be deleted. A pending cleanup is visible and retryable with the same session ID, including after restart. Shared copies remain outside this operation. Product history, deletion confirmation and user CSV/GPX export are added in stage 4. See [local operations contract and verification](../../docs/local-data-operations.md).
 
 ### Local data verification
 
@@ -592,3 +592,18 @@ an inline validation error and a Vibration/Sound/Silent segmented control.
 
 Checks: typecheck, lint, 70 JS tests, Prettier and Android export passed.
 Device visual checks, TalkBack and the real picker/permission flows were NOT RUN.
+
+## S02 Bluetooth-off fallback (2026-10-30)
+
+Bridge **v11** adds nullable `RecorderSnapshot.bluetoothEnabled`. The native
+service reads the adapter state at start and observes
+`BluetoothAdapter.ACTION_STATE_CHANGED`; turning Bluetooth off cancels the active
+search, clears the discovered list and reports `Bluetooth is off`. `search()` and
+`connect()` reject with `BLUETOOTH_OFF` instead of starting discovery. S02 shows a
+dedicated fallback with "Bluetooth is off", "Open Bluetooth settings" and
+"Not now"; it does not auto-search while the adapter is off. The snapshot field is
+nullable because adapter state is unavailable before Bluetooth permission is
+granted.
+
+Checks: typecheck, lint, 70 JS tests and Expo export. Native rebuild and device
+verification of the adapter transition are still required.

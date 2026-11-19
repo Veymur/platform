@@ -32,7 +32,9 @@ const errorText = (cause: unknown) =>
 function ShapeThumbnail({ shape }: { shape: ShapeState | undefined }) {
   if (!shape || typeof shape === "string")
     return <View style={styles.thumbnailPlaceholder} />;
-  return <PrintShape label="Session shape" size={60} columns={shape} />;
+  return (
+    <PrintShape label="Session shape" size={60} columns={shape} decorative />
+  );
 }
 
 function averageBpm(shape: ShapeState | undefined): number | null {

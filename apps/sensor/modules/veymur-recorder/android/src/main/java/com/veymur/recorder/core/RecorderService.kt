@@ -2,6 +2,8 @@ package com.veymur.recorder.core
 
 import android.Manifest
 import android.app.*
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -28,7 +30,7 @@ data class RecorderSnapshot(
     val hrCount: Int = 0, val gpsCount: Int = 0, val activeMs: Long = 0, val lastCommit: Long = 0,
     val alertsStatus: String = "disabled", val storageWarning: String? = null,
     val revision: Long = 0, val errorCode: String? = null, val recovered: Int = 0, val gpsStatus: String = "Route disabled",
-    val gpsDistanceM: Double? = null, val ready: Boolean = false
+    val gpsDistanceM: Double? = null, val bluetoothEnabled: Boolean? = null, val ready: Boolean = false
 )
 
 class RecorderService : Service() {
@@ -82,6 +84,24 @@ class RecorderService : Service() {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = enqueue {
             record(if (intent.action == Intent.ACTION_SCREEN_OFF) "screen_off" else "screen_on", JSONObject())
+        }
+    }
+    private var bluetoothReceiverRegistered = false
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            enqueue {
+                val enabled = bluetoothEnabled()
+                snapshot = snapshot.copy(bluetoothEnabled = enabled)
+                if (enabled == false) {
+                    activeSearchId = null
+                    searchJob?.cancel(); searchJob = null
+                    snapshot = snapshot.copy(devices = emptyList(), connected = null, hr = null, status = "Bluetooth is off")
+                    resetRangeAlerts()
+                } else if (enabled == true && !snapshot.recording && snapshot.connected == null) {
+                    snapshot = snapshot.copy(status = "Turn on your sensor and search for it")
+                }
+            }
         }
     }
     private val gps by lazy { getSystemService(LocationManager::class.java) }
@@ -143,12 +163,18 @@ class RecorderService : Service() {
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
         }, Context.RECEIVER_NOT_EXPORTED)
+        try {
+            registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), Context.RECEIVER_NOT_EXPORTED)
+            bluetoothReceiverRegistered = true
+        } catch (_: SecurityException) { }
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("recorder", "Sensor recording", NotificationManager.IMPORTANCE_LOW))
         enqueue {
             journal = Journal(this)
             engine = RecorderSession(journal!!, clock)
-            snapshot = snapshot.copy(ready = true, recovered = journal!!.recoverInterrupted(), status = "Turn on your sensor and search for it")
+            val enabled = bluetoothEnabled()
+            snapshot = snapshot.copy(ready = true, recovered = journal!!.recoverInterrupted(), bluetoothEnabled = enabled,
+                status = if (enabled == false) "Bluetooth is off" else "Turn on your sensor and search for it")
         }
         // Opening/recovery is independent of recorder storage and never enables capture.
         val diagnostics = DiagnosticJournal(this)
@@ -289,6 +315,11 @@ class RecorderService : Service() {
     }
     private fun search() {
         if (snapshot.recording || starting || session != null) throw RecorderError("INVALID_STATE", "Finish the current session before searching")
+        if (bluetoothEnabled() == false) {
+            snapshot = snapshot.copy(bluetoothEnabled = false, devices = emptyList(), status = "Bluetooth is off")
+            publish()
+            throw RecorderError("BLUETOOTH_OFF", "Bluetooth is off. Turn it on to search for a sensor")
+        }
         searchJob?.cancel()
         enqueue { snapshot = snapshot.copy(devices = emptyList(), errorCode = null, status = "Searching for Verity Sense…") }
         val subscriptionId = java.util.UUID.randomUUID().toString()
@@ -310,6 +341,11 @@ class RecorderService : Service() {
     }
     private fun cancelSearch() { activeSearchId = null; searchJob?.cancel(); enqueue { snapshot = snapshot.copy(status = "Search stopped") } }
     private fun connect(id: String) {
+        if (bluetoothEnabled() == false) {
+            snapshot = snapshot.copy(bluetoothEnabled = false, status = "Bluetooth is off")
+            publish()
+            throw RecorderError("BLUETOOTH_OFF", "Bluetooth is off. Turn it on to connect a sensor")
+        }
         if (session != null && engine?.state == "interrupted") throw RecorderError("INVALID_STATE", "Save the available portion before reconnecting")
         if ((snapshot.recording || starting || session != null) && (id != selected || snapshot.connected != null))
             throw RecorderError("INVALID_STATE", "Only reconnecting the selected sensor is allowed during a session")
@@ -498,12 +534,15 @@ class RecorderService : Service() {
             "devices" to snapshot.devices.map { mapOf("id" to it.deviceId, "name" to it.name, "address" to it.address) },
             "hrCount" to snapshot.hrCount, "gpsCount" to snapshot.gpsCount, "activeMs" to snapshot.activeMs,
             "lastCommitUtcMs" to snapshot.lastCommit.takeIf { it > 0 }, "gpsStatus" to snapshot.gpsStatus,
-            "gpsDistanceM" to snapshot.gpsDistanceM,
+            "gpsDistanceM" to snapshot.gpsDistanceM, "bluetoothEnabled" to snapshot.bluetoothEnabled,
             "alertsStatus" to snapshot.alertsStatus, "storageWarning" to snapshot.storageWarning,
             "selectedDeviceId" to selected, "discoveryActive" to (activeSearchId != null),
             "routeEnabled" to routeEnabled, "recoveredCount" to snapshot.recovered, "errorCode" to snapshot.errorCode, "diagnostic" to diagnosticDto())
     }
     private fun phoneBattery(): Int = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    private fun bluetoothEnabled(): Boolean? = try {
+        getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled
+    } catch (_: SecurityException) { null }
 
     /** Same fix-time admission as JournalAggregateReader: only a verified source fix is usable. */
     private fun gpsFixNs(sample: NormalizedGps, receipt: Receipt): Long? {
@@ -655,6 +694,7 @@ class RecorderService : Service() {
         shuttingDown = true
         rangeNotifications?.clear()
         unregisterReceiver(screenReceiver)
+        if (bluetoothReceiverRegistered) unregisterReceiver(bluetoothReceiver)
         scope.cancel(); if (::api.isInitialized) api.shutDown(); gps.removeUpdates(locations)
         wakeLock?.let { if (it.isHeld) it.release() }
         worker.removeCallbacks(tick)

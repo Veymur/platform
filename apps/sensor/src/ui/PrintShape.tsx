@@ -28,10 +28,12 @@ export function PrintShape({
   columns,
   size,
   label,
+  decorative = false,
 }: {
   columns: readonly ChartColumn[];
   size: number;
   label: string;
+  decorative?: boolean;
 }) {
   const { colors } = useTheme();
   if (columns.length === 0)
@@ -70,9 +72,11 @@ export function PrintShape({
   const ring = outer + (size / 64) * 3;
   return (
     <View
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={label}
+      accessible={!decorative}
+      accessibilityRole={decorative ? undefined : "image"}
+      accessibilityLabel={decorative ? undefined : label}
+      accessibilityElementsHidden={decorative}
+      importantForAccessibility={decorative ? "no-hide-descendants" : "auto"}
       style={{ width: size, height: size }}
     >
       <Svg

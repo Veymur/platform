@@ -241,6 +241,7 @@ export function PulseNumber({
   return (
     <Text
       {...props}
+      maxFontSizeMultiplier={1.25}
       style={[
         {
           color: state === "stale" ? colors["ink-3"] : colors.ink,

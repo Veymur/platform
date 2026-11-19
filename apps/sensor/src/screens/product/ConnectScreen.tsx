@@ -94,6 +94,7 @@ function SensorOption({
       </View>
       <Action
         title="Connect"
+        accessibilityLabel={`Connect ${name}, ID ${id}`}
         size="sm"
         block={false}
         disabled={disabled}
@@ -139,6 +140,16 @@ export function ConnectScreen({
       ),
     );
   };
+  const openBluetoothSettings = () => {
+    setSettingsError(null);
+    void Linking.sendIntent("android.settings.BLUETOOTH_SETTINGS").catch(() =>
+      Linking.openSettings().catch(() =>
+        setSettingsError(
+          "Could not open Bluetooth settings. Open them from your phone settings.",
+        ),
+      ),
+    );
+  };
   useEffect(() => {
     void refreshPermission();
   }, [refreshPermission]);
@@ -149,7 +160,8 @@ export function ConnectScreen({
       !snapshot?.ready ||
       snapshot.connectedDeviceId ||
       snapshot.selectedDeviceId ||
-      snapshot.discoveryActive
+      snapshot.discoveryActive ||
+      snapshot.bluetoothEnabled === false
     )
       return;
     autoSearched.current = true;
@@ -183,6 +195,26 @@ export function ConnectScreen({
     lastTarget !== null &&
     !failedTarget &&
     !snapshot.discoveryActive;
+  if (snapshot.bluetoothEnabled === false)
+    return frame(
+      <>
+        <Radar seed={2} icon="bluetooth" height={144} wobble={0.12} />
+        <H2>Bluetooth is off</H2>
+        <Body>
+          Turn on Bluetooth to find and connect your heart-rate sensor. Pulse
+          recording and history stay available on this phone.
+        </Body>
+        <Muted>Sensor search is not running while Bluetooth is off.</Muted>
+      </>,
+      <>
+        <Action
+          title="Open Bluetooth settings"
+          size="lg"
+          onPress={openBluetoothSettings}
+        />
+        {onBack && <Action title="Not now" variant="quiet" onPress={onBack} />}
+      </>,
+    );
   if (!granted)
     return frame(
       <>

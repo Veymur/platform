@@ -40,8 +40,10 @@ class PolarRecorderProcessor(
         when (event.eventType) {
             "bluetooth" -> {
                 lastHr = null
-                if (!payload.getBoolean("powered")) snapshot = snapshot.copy(status = "Bluetooth disabled", connected = null, hr = null)
-                record("bluetooth", JSONObject().put("powered", payload.getBoolean("powered")))
+                val powered = payload.getBoolean("powered")
+                snapshot = if (powered) snapshot.copy(bluetoothEnabled = true)
+                else snapshot.copy(bluetoothEnabled = false, status = "Bluetooth is off", connected = null, hr = null)
+                record("bluetooth", JSONObject().put("powered", powered))
             }
             "connecting" -> snapshot = snapshot.copy(status = "Connecting to ${event.deviceId}…")
             "connected" -> {

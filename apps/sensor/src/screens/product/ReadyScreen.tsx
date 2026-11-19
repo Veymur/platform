@@ -51,6 +51,7 @@ function RangeRow({
       </View>
       <Action
         title="Set up"
+        accessibilityLabel="Set up range alerts"
         size="sm"
         variant="secondary"
         block={false}
@@ -164,6 +165,7 @@ export function ReadyScreen({
           }
           tone={connected ? "tide" : "neutral"}
           icon={connected ? "check" : "bluetooth"}
+          style={{ maxWidth: "100%" }}
         />
         {connected && (
           <Mark
@@ -264,6 +266,7 @@ export function ReadyScreen({
             ]}
           >
             <Text
+              maxFontSizeMultiplier={1.3}
               style={[
                 styles.startTitle,
                 { color: canStart ? colors["on-solid"] : colors["ink-3"] },
@@ -272,6 +275,7 @@ export function ReadyScreen({
               {starting ? "Starting…" : "Start\nrecording"}
             </Text>
             <Text
+              maxFontSizeMultiplier={1.4}
               style={[
                 styles.startHint,
                 { color: canStart ? colors["on-solid"] : colors["ink-3"] },
@@ -371,6 +375,7 @@ export function ReadyScreen({
 const styles = StyleSheet.create({
   split: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
@@ -422,6 +427,7 @@ const styles = StyleSheet.create({
   },
   pulseSplit: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,

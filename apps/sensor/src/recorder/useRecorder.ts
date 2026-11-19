@@ -5,11 +5,13 @@ import {
   type RecorderPermissions,
 } from "./RecorderController";
 import { recorderPermissions } from "./permissions";
+import { recorderClient } from "./RecorderClient";
+import { hrReplayClient } from "../dev/hrReplay";
 export function useRecorder(
   permissions: RecorderPermissions = recorderPermissions,
 ) {
   const controller = useMemo(
-    () => new RecorderController(permissions),
+    () => new RecorderController(permissions, hrReplayClient ?? recorderClient),
     [permissions],
   );
   const [view, setView] = useState(initialRecorderView);

@@ -78,13 +78,19 @@ export function AppBar({
       {typeof title === "string" ? (
         <Text
           accessibilityRole="header"
-          numberOfLines={1}
+          numberOfLines={2}
           style={[styles.appBarTitle, { color: colors.ink }, titleStyle]}
         >
           {title}
         </Text>
       ) : (
-        <View style={styles.appBarTitleNode}>{title}</View>
+        <View
+          accessible
+          accessibilityRole="header"
+          style={styles.appBarTitleNode}
+        >
+          {title}
+        </View>
       )}
       {right}
     </View>

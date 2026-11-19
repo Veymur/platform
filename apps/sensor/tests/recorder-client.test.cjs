@@ -52,6 +52,7 @@ const dto = (revision = 1) => ({
   lastCommitUtcMs: null,
   gpsStatus: "Route disabled",
   gpsDistanceM: null,
+  bluetoothEnabled: true,
   routeEnabled: false,
   recoveredCount: 0,
   errorCode: null,
@@ -155,6 +156,7 @@ test("stale HR stays null; malformed, missing and zero values are rejected; nati
     { ...dto(), activeMs: undefined },
     { ...dto(), gpsDistanceM: -1 },
     { ...dto(), gpsDistanceM: undefined },
+    { ...dto(), bluetoothEnabled: "yes" },
     { ...dto(), revision: -1 },
     { ...dto(), sessionState: { toString: () => "paused" } },
     {

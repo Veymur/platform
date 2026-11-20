@@ -29,7 +29,7 @@ import {
   displayActiveMs,
   formatAge,
   formatClock,
-  formatDistance,
+  liveDistanceLabel,
   liveChartWindow,
   monotonicNowMs,
   rangeContaining,
@@ -379,17 +379,13 @@ export function SessionScreen() {
           <Detail
             title="Distance"
             value={
-              snapshot.gpsDistanceM === null
-                ? snapshot.routeEnabled
-                  ? "Waiting"
-                  : "—"
-                : formatDistance(snapshot.gpsDistanceM, units)
+              liveDistanceLabel(
+                snapshot.gpsDistanceM,
+                snapshot.routeEnabled,
+                units,
+              ) ?? "—"
             }
-            note={
-              snapshot.routeEnabled
-                ? `${snapshot.gpsCount} points saved`
-                : "Route off"
-            }
+            note={snapshot.routeEnabled ? undefined : "Route off"}
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -508,9 +504,11 @@ export function SessionScreen() {
       >
         <Label>
           {`${formatClock(shownActiveMs)} · ${
-            snapshot.gpsDistanceM === null
-              ? "route distance unavailable"
-              : formatDistance(snapshot.gpsDistanceM, units)
+            liveDistanceLabel(
+              snapshot.gpsDistanceM,
+              snapshot.routeEnabled,
+              units,
+            ) ?? "route distance unavailable"
           }. The session is saved on this phone.`}
         </Label>
         <Action

@@ -108,6 +108,27 @@ export function alertModeOf(alerts: {
 }): AlertMode {
   return alerts.sound ? "sound" : alerts.vibration ? "vibration" : "silent";
 }
+export type SavedRangeChoice = {
+  bounds: RangeBounds | null;
+  rangesSelected: boolean;
+  alerts: { enabled: boolean; sound: boolean; vibration: boolean } | null;
+};
+export function rangeChoiceUnchanged(
+  saved: SavedRangeChoice,
+  fromText: string,
+  toText: string,
+  signal: AlertMode,
+): boolean {
+  if (!saved.bounds || !saved.rangesSelected || !saved.alerts?.enabled)
+    return false;
+  const parsed = parseRangeBounds(fromText, toText);
+  return (
+    !("error" in parsed) &&
+    parsed.bounds.from === saved.bounds.from &&
+    parsed.bounds.to === saved.bounds.to &&
+    alertModeOf(saved.alerts) === signal
+  );
+}
 export function alertDelivery(mode: AlertMode) {
   return { sound: mode === "sound", vibration: mode === "vibration" };
 }
@@ -437,8 +458,16 @@ export function formatDuration(ms: number): string {
 }
 export function formatDistance(meters: number, units: Units): string {
   return units === "imperial"
-    ? `${(meters / 1609.344).toFixed(2)} mi`
-    : `${(meters / 1000).toFixed(2)} km`;
+    ? `${(meters / 1609.344).toFixed(1)} mi`
+    : `${(meters / 1000).toFixed(1)} km`;
+}
+export function liveDistanceLabel(
+  distanceM: number | null,
+  routeEnabled: boolean,
+  units: Units,
+): string | null {
+  if (distanceM === null && !routeEnabled) return null;
+  return formatDistance(distanceM ?? 0, units);
 }
 export function formatPercent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`;

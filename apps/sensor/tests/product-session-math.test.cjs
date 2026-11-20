@@ -367,8 +367,9 @@ test("formatting keeps unknown values as text and uses the selected units", () =
   assert.equal(m.formatDuration(45000), "45 s");
   assert.equal(m.formatDuration(38 * 60000), "38 min");
   assert.equal(m.formatDuration(65 * 60000), "1 h 05 min");
-  assert.equal(m.formatDistance(3200, "metric"), "3.20 km");
-  assert.equal(m.formatDistance(1609.344, "imperial"), "1.00 mi");
+  assert.equal(m.formatDistance(3200, "metric"), "3.2 km");
+  assert.equal(m.formatDistance(1609.344, "imperial"), "1.0 mi");
+  assert.equal(m.formatDistance(1250, "metric"), "1.3 km");
   assert.equal(m.formatPercent(0.914), "91%");
   assert.equal(m.formatAge(null), "No reading yet");
   assert.equal(m.formatAge(500), "Updated just now");
@@ -443,4 +444,53 @@ test("live shape stops at the last fresh reading when pulse is stale or recordin
   assert.equal(m.frozenLiveNow(samples, 9000, true), 9000);
   assert.equal(m.frozenLiveNow(samples, 9000, false), 2000);
   assert.equal(m.frozenLiveNow([{ atMs: 3000, bpm: null }], 9000, false), 9000);
+});
+
+test("live distance shows zero while a requested route has no distance yet", () => {
+  assert.equal(m.liveDistanceLabel(null, true, "metric"), "0.0 km");
+  assert.equal(m.liveDistanceLabel(null, true, "imperial"), "0.0 mi");
+  assert.equal(m.liveDistanceLabel(2140, true, "metric"), "2.1 km");
+  assert.equal(m.liveDistanceLabel(null, false, "metric"), null);
+});
+
+test("saving an unchanged pulse range only closes the editor", () => {
+  const saved = {
+    bounds: { from: 120, to: 150 },
+    rangesSelected: true,
+    alerts: { enabled: true, sound: false, vibration: true },
+  };
+  assert.equal(
+    m.rangeChoiceUnchanged(saved, "120", " 150 ", "vibration"),
+    true,
+  );
+  assert.equal(m.rangeChoiceUnchanged(saved, "121", "150", "vibration"), false);
+  assert.equal(m.rangeChoiceUnchanged(saved, "120", "150", "sound"), false);
+  assert.equal(m.rangeChoiceUnchanged(saved, "", "150", "vibration"), false);
+  assert.equal(
+    m.rangeChoiceUnchanged(
+      { ...saved, alerts: { ...saved.alerts, enabled: false } },
+      "120",
+      "150",
+      "vibration",
+    ),
+    false,
+  );
+  assert.equal(
+    m.rangeChoiceUnchanged(
+      { ...saved, rangesSelected: false },
+      "120",
+      "150",
+      "vibration",
+    ),
+    false,
+  );
+  assert.equal(
+    m.rangeChoiceUnchanged(
+      { ...saved, bounds: null },
+      "120",
+      "150",
+      "vibration",
+    ),
+    false,
+  );
 });

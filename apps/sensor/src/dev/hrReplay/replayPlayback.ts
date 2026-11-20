@@ -165,6 +165,7 @@ export class ReplayPlayback {
       gpsStatus: "Route off",
       gpsDistanceM: null,
       bluetoothEnabled: true,
+      locationEnabled: true,
       routeEnabled: false,
       recoveredCount: 0,
       errorCode: null,

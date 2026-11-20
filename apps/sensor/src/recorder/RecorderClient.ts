@@ -171,6 +171,7 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
     typeof v.gpsStatus !== "string" ||
     !nullableDistance(v.gpsDistanceM) ||
     !nullableBoolean(v.bluetoothEnabled) ||
+    !nullableBoolean(v.locationEnabled) ||
     typeof v.routeEnabled !== "boolean" ||
     !nonnegative(v.recoveredCount) ||
     !(
@@ -217,6 +218,7 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
     gpsStatus: v.gpsStatus,
     gpsDistanceM: v.gpsDistanceM,
     bluetoothEnabled: v.bluetoothEnabled,
+    locationEnabled: v.locationEnabled,
     routeEnabled: v.routeEnabled,
     recoveredCount: v.recoveredCount,
     errorCode: v.errorCode,

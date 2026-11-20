@@ -408,10 +408,12 @@ export function Detail({
   title,
   value,
   note,
+  compact = false,
 }: {
   title: string;
   value: string;
   note?: string;
+  compact?: boolean;
 }) {
   const { colors } = useTheme();
   return (
@@ -430,13 +432,22 @@ export function Detail({
         {title}
       </Label>
       <Text
-        style={{
-          color: colors.ink,
-          fontFamily: fonts.uiSemibold,
-          fontSize: 30,
-          lineHeight: 33,
-          letterSpacing: -0.6,
-        }}
+        style={
+          compact
+            ? {
+                color: colors.ink,
+                fontFamily: fonts.uiMedium,
+                fontSize: 16,
+                lineHeight: 22,
+              }
+            : {
+                color: colors.ink,
+                fontFamily: fonts.uiSemibold,
+                fontSize: 30,
+                lineHeight: 33,
+                letterSpacing: -0.6,
+              }
+        }
       >
         {value}
       </Text>

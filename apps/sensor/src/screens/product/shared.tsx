@@ -127,6 +127,34 @@ export function OpenBluetoothSettingsAction({
     />
   );
 }
+export function openLocationSettings(): Promise<void> {
+  return Linking.sendIntent("android.settings.LOCATION_SOURCE_SETTINGS").catch(
+    () => Linking.openSettings(),
+  );
+}
+export const locationSettingsError =
+  "Could not open location settings. Open them from your phone settings.";
+export function OpenLocationSettingsAction({
+  onError,
+  prominent = false,
+}: {
+  onError?: (message: string) => void;
+  prominent?: boolean;
+}) {
+  return (
+    <Action
+      title={prominent ? "Turn on location" : "Open location settings"}
+      size={prominent ? "lg" : "sm"}
+      variant={prominent ? "primary" : "secondary"}
+      block={prominent}
+      onPress={() => {
+        void openLocationSettings().catch(() =>
+          onError?.(locationSettingsError),
+        );
+      }}
+    />
+  );
+}
 export function rangesSummary(preferences: Preferences | null): string {
   const bounds = boundsFromRanges(preferences?.hr_ranges?.ranges);
   const settings = preferences?.settings;

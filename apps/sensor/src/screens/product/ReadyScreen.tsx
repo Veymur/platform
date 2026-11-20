@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -25,10 +25,12 @@ import { Eyebrow, Unit } from "../../ui/Typography";
 import { fonts } from "../../ui/tokens";
 import { useProduct } from "../../product/ProductContext";
 import { routePermissionGranted } from "../../recorder/permissions";
+import { locationOffForRequestedRoute } from "../../recorder/routeAvailability";
 import { formatAge, withoutErrorCode } from "../../product/sessionMath";
 import {
   Muted,
   OpenBluetoothSettingsAction,
+  OpenLocationSettingsAction,
   OpenSettingsAction,
   rangesSummary,
 } from "./shared";
@@ -81,15 +83,25 @@ export function ReadyScreen({
   const { snapshot, controller, pending, routeRequested, error } = recorder;
   const [routeDialog, setRouteDialog] = useState(false);
   const [routeDenied, setRouteDenied] = useState(false);
+  const [locationDialog, setLocationDialog] = useState(false);
+  const latestLocationEnabled = useRef<boolean | null>(null);
+  latestLocationEnabled.current = snapshot?.locationEnabled ?? null;
   const [recoveredDismissed, setRecoveredDismissed] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => {
     if (routeRequested) setRouteDenied(false);
   }, [routeRequested]);
+  useEffect(() => {
+    if (snapshot?.locationEnabled !== false) setLocationDialog(false);
+  }, [snapshot?.locationEnabled]);
   if (!snapshot) return null;
   const busy = pending !== null;
   const connected = snapshot.connectedDeviceId !== null;
   const bluetoothOff = snapshot.bluetoothEnabled === false;
+  const locationOff = locationOffForRequestedRoute(
+    routeRequested,
+    snapshot.locationEnabled,
+  );
   const fresh = snapshot.hrStatus === "fresh" && snapshot.hr !== null;
   const starting = pending === "Start";
   const canStart = snapshot.ready && !busy && connected;
@@ -113,10 +125,13 @@ export function ReadyScreen({
     const granted = await routePermissionGranted();
     setRouteDenied(!granted);
     await rememberRoute(granted);
+    if (locationOffForRequestedRoute(granted, latestLocationEnabled.current))
+      setLocationDialog(true);
   };
   const disableRoute = async () => {
     await controller.setRoute(false);
     setRouteDenied(false);
+    setLocationDialog(false);
     await rememberRoute(false);
   };
   return (
@@ -356,6 +371,16 @@ export function ReadyScreen({
           action={<OpenSettingsAction />}
         />
       )}
+      {locationOff && (
+        <Banner
+          live
+          tone="dusk"
+          icon="location"
+          title="Location is off on this phone"
+          detail="The route will be unavailable until you turn it on."
+          action={<OpenLocationSettingsAction onError={setSaveError} />}
+        />
+      )}
       {connected && !fresh && (
         <Muted>
           You can start now. Time without a current pulse is marked as a gap.
@@ -383,6 +408,25 @@ export function ReadyScreen({
           title="Allow location"
           onPress={() => {
             void enableRoute();
+          }}
+        />
+      </Dialog>
+      <Dialog
+        visible={locationDialog && locationOff}
+        title="Turn on location?"
+        onClose={() => setLocationDialog(false)}
+        closeTitle="Not now"
+      >
+        <Label>
+          Location is off on this phone, so the route can’t be recorded. Turn it
+          on in settings, then come back.
+        </Label>
+        <Muted>If you don’t, pulse and history still work.</Muted>
+        <OpenLocationSettingsAction
+          prominent
+          onError={(message) => {
+            setLocationDialog(false);
+            setSaveError(message);
           }}
         />
       </Dialog>

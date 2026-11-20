@@ -37,6 +37,10 @@ import {
   type UserRange,
 } from "../../product/sessionMath";
 import type { RecorderSnapshot } from "../../recorder/types";
+import {
+  sessionRouteLabel,
+  sessionRouteUnavailable,
+} from "../../recorder/routeAvailability";
 import { hrReplayEnabled } from "../../dev/hrReplay";
 import { OpenBluetoothSettingsAction, OpenSettingsAction } from "./shared";
 
@@ -226,9 +230,7 @@ export function SessionScreen() {
   const alertsBlocked =
     snapshot.alertsStatus === "notification_permission_denied" ||
     snapshot.alertsStatus === "notifications_disabled";
-  const gpsUnavailable =
-    snapshot.routeEnabled &&
-    /no recent|gps disabled|permission denied/i.test(snapshot.gpsStatus);
+  const gpsUnavailable = sessionRouteUnavailable(snapshot);
   const lastPulseMark =
     snapshot.hrAgeMs === null
       ? "No pulse reading yet"
@@ -393,15 +395,8 @@ export function SessionScreen() {
         <View style={{ flex: 1 }}>
           <Detail
             title="Route"
-            value={
-              snapshot.routeEnabled
-                ? gpsUnavailable
-                  ? "Unavailable"
-                  : paused
-                    ? "Paused"
-                    : "Recording"
-                : "Off"
-            }
+            compact
+            value={sessionRouteLabel(snapshot, paused)}
             note={paused ? "Not counting" : undefined}
           />
         </View>

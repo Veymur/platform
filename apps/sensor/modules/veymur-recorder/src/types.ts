@@ -1,7 +1,7 @@
 export type RecorderModuleInfo = {
   moduleName: "VeymurRecorder";
   platform: "android";
-  contractVersion: 11;
+  contractVersion: 12;
   recorderImplemented: true;
 };
 export type RecorderErrorCode =
@@ -74,6 +74,7 @@ export type RecorderSnapshot = {
   gpsStatus: string;
   gpsDistanceM: number | null;
   bluetoothEnabled: boolean | null;
+  locationEnabled: boolean | null;
   routeEnabled: boolean;
   recoveredCount: number;
   errorCode: RecorderErrorCode | null;

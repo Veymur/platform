@@ -217,7 +217,7 @@ test("live chart shows only fresh readings in its window", () => {
   });
   assert.deepEqual(
     plain(
-      m.liveChartValues(
+      m.liveChartWindow(
         [
           { atMs: 1000, bpm: 80 },
           { atMs: 3000, bpm: null },
@@ -227,8 +227,131 @@ test("live chart shows only fresh readings in its window", () => {
         2,
       ),
     ),
-    [80, null],
+    { values: [80, null], firstCoveredIndex: 0 },
   );
+});
+
+const steadyReadings = (fromMs, toMs, bpm = 120) => {
+  const intervals = [880, 1090, 1010, 960, 1100, 940, 1060, 990];
+  const samples = [];
+  for (let at = fromMs, step = 0; at <= toMs; step++) {
+    samples.push({ atMs: at, bpm: bpm + (step % 5) });
+    at += intervals[step % intervals.length];
+  }
+  return samples;
+};
+
+test("a continuous one-hertz stream with receipt jitter never shows a gap", () => {
+  const samples = steadyReadings(0, 200000);
+  for (let now = 91000; now <= 200000; now += 137) {
+    const visible = samples.filter((sample) => sample.atMs <= now - 20);
+    const window = m.liveChartWindow(visible, now);
+    assert.equal(window.firstCoveredIndex, 0);
+    assert.ok(
+      window.values.every((value) => value !== null),
+      `no gap at ${now}`,
+    );
+  }
+});
+
+test("the window before the first reading is uncovered, not a pulse gap", () => {
+  const samples = steadyReadings(60000, 80000);
+  const window = m.liveChartWindow(samples, 80500);
+  assert.equal(window.firstCoveredIndex, 69);
+  assert.ok(window.values.slice(0, 69).every((value) => value === null));
+  assert.ok(window.values.slice(69).every((value) => value !== null));
+  assert.equal(m.liveChartWindow([], 80500).firstCoveredIndex, 90);
+});
+
+test("a real loss of pulse stays a gap and is not bridged by the line", () => {
+  const samples = [
+    ...steadyReadings(0, 40000),
+    { atMs: 44200, bpm: null },
+    { atMs: 45200, bpm: null },
+    { atMs: 46200, bpm: null },
+    ...steadyReadings(52000, 90000),
+  ];
+  const { values } = m.liveChartWindow(samples, 90500);
+  const gap = values
+    .map((value, index) => (value === null ? index : -1))
+    .filter((index) => index >= 0);
+  assert.deepEqual(gap, [43, 44, 45, 46, 47, 48, 49, 50]);
+  assert.ok(values.slice(0, 43).every((value) => value !== null));
+  assert.ok(values.slice(51).every((value) => value !== null));
+});
+
+test("without new snapshots a reading is held only while it is fresh", () => {
+  const samples = steadyReadings(0, 30000);
+  const lastAt = samples.at(-1).atMs;
+  const { values } = m.liveChartWindow(samples, lastAt + 12000, 90000, 90);
+  const lastColumns = values.slice(-12);
+  assert.ok(lastColumns.slice(0, 5).every((value) => value !== null));
+  assert.ok(lastColumns.slice(-6).every((value) => value === null));
+});
+
+test("live samples belong to the current session only", () => {
+  const recording = (sessionId, hr, hrAgeMs = 300) => ({
+    sessionId,
+    sessionState: "recording",
+    hrStatus: "fresh",
+    hr,
+    hrAgeMs,
+  });
+  let samples = [{ atMs: 1000, bpm: 150 }];
+  samples = m.liveSamplesAfterSnapshot(
+    samples,
+    "old",
+    recording("new", 90),
+    5000,
+  );
+  assert.deepEqual(plain(samples), [{ atMs: 4700, bpm: 90 }]);
+  samples = m.liveSamplesAfterSnapshot(
+    samples,
+    "new",
+    recording("new", 91),
+    6000,
+  );
+  assert.equal(samples.length, 2);
+  const idle = {
+    sessionId: null,
+    sessionState: "preparation",
+    hrStatus: "fresh",
+    hr: 70,
+    hrAgeMs: 100,
+  };
+  assert.deepEqual(
+    plain(m.liveSamplesAfterSnapshot(samples, "new", idle, 7000)),
+    [],
+  );
+  const empty = [];
+  assert.equal(m.liveSamplesAfterSnapshot(empty, null, idle, 7000), empty);
+  const stale = { ...recording("new", 91), hrStatus: "stale", hrAgeMs: 6000 };
+  assert.deepEqual(
+    plain(m.liveSamplesAfterSnapshot(samples, "new", stale, 8000).at(-1)),
+    { atMs: 8000, bpm: null },
+  );
+});
+
+test("pause ends the held reading once and freezes the live window", () => {
+  const paused = {
+    sessionId: "s",
+    sessionState: "paused",
+    hrStatus: "fresh",
+    hr: 100,
+    hrAgeMs: 200,
+  };
+  let samples = steadyReadings(0, 20000, 100);
+  const readings = samples.length;
+  samples = m.liveSamplesAfterSnapshot(samples, "s", paused, 20500);
+  assert.deepEqual(plain(samples.at(-1)), { atMs: 20500, bpm: null });
+  const marked = m.liveSamplesAfterSnapshot(samples, "s", paused, 21500);
+  assert.equal(marked, samples);
+  assert.equal(marked.length, readings + 1);
+  const frozen = m.liveChartWindow(samples, samples.at(-1).atMs);
+  assert.ok(frozen.values.slice(-20).every((value) => value !== null));
+  const resumed = [...samples, ...steadyReadings(40000, 60000, 100)];
+  const { values } = m.liveChartWindow(resumed, 60500);
+  assert.ok(values.slice(50, 60).every((value) => value === null));
 });
 
 test("displayed active time interpolates only while recording and is capped", () => {
@@ -244,8 +367,9 @@ test("formatting keeps unknown values as text and uses the selected units", () =
   assert.equal(m.formatDuration(45000), "45 s");
   assert.equal(m.formatDuration(38 * 60000), "38 min");
   assert.equal(m.formatDuration(65 * 60000), "1 h 05 min");
-  assert.equal(m.formatDistance(3200, "metric"), "3.20 km");
-  assert.equal(m.formatDistance(1609.344, "imperial"), "1.00 mi");
+  assert.equal(m.formatDistance(3200, "metric"), "3.2 km");
+  assert.equal(m.formatDistance(1609.344, "imperial"), "1.0 mi");
+  assert.equal(m.formatDistance(1250, "metric"), "1.3 km");
   assert.equal(m.formatPercent(0.914), "91%");
   assert.equal(m.formatAge(null), "No reading yet");
   assert.equal(m.formatAge(500), "Updated just now");
@@ -320,4 +444,53 @@ test("live shape stops at the last fresh reading when pulse is stale or recordin
   assert.equal(m.frozenLiveNow(samples, 9000, true), 9000);
   assert.equal(m.frozenLiveNow(samples, 9000, false), 2000);
   assert.equal(m.frozenLiveNow([{ atMs: 3000, bpm: null }], 9000, false), 9000);
+});
+
+test("live distance shows zero while a requested route has no distance yet", () => {
+  assert.equal(m.liveDistanceLabel(null, true, "metric"), "0.0 km");
+  assert.equal(m.liveDistanceLabel(null, true, "imperial"), "0.0 mi");
+  assert.equal(m.liveDistanceLabel(2140, true, "metric"), "2.1 km");
+  assert.equal(m.liveDistanceLabel(null, false, "metric"), null);
+});
+
+test("saving an unchanged pulse range only closes the editor", () => {
+  const saved = {
+    bounds: { from: 120, to: 150 },
+    rangesSelected: true,
+    alerts: { enabled: true, sound: false, vibration: true },
+  };
+  assert.equal(
+    m.rangeChoiceUnchanged(saved, "120", " 150 ", "vibration"),
+    true,
+  );
+  assert.equal(m.rangeChoiceUnchanged(saved, "121", "150", "vibration"), false);
+  assert.equal(m.rangeChoiceUnchanged(saved, "120", "150", "sound"), false);
+  assert.equal(m.rangeChoiceUnchanged(saved, "", "150", "vibration"), false);
+  assert.equal(
+    m.rangeChoiceUnchanged(
+      { ...saved, alerts: { ...saved.alerts, enabled: false } },
+      "120",
+      "150",
+      "vibration",
+    ),
+    false,
+  );
+  assert.equal(
+    m.rangeChoiceUnchanged(
+      { ...saved, rangesSelected: false },
+      "120",
+      "150",
+      "vibration",
+    ),
+    false,
+  );
+  assert.equal(
+    m.rangeChoiceUnchanged(
+      { ...saved, bounds: null },
+      "120",
+      "150",
+      "vibration",
+    ),
+    false,
+  );
 });

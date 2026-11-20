@@ -176,7 +176,7 @@ export function Action({
           paddingHorizontal:
             kind === "quiet" ? spacing.section / 2 : size === "sm" ? 16 : 24,
           opacity: disabled ? 0.45 : 1,
-          transform: pressed ? [{ scale: 0.98 }] : undefined,
+          transform: pressed ? [{ scale: 0.98 }] : [],
         },
         block ? styles.actionBlock : styles.actionInline,
         style,
@@ -408,10 +408,12 @@ export function Detail({
   title,
   value,
   note,
+  compact = false,
 }: {
   title: string;
   value: string;
   note?: string;
+  compact?: boolean;
 }) {
   const { colors } = useTheme();
   return (
@@ -430,13 +432,22 @@ export function Detail({
         {title}
       </Label>
       <Text
-        style={{
-          color: colors.ink,
-          fontFamily: fonts.uiSemibold,
-          fontSize: 30,
-          lineHeight: 33,
-          letterSpacing: -0.6,
-        }}
+        style={
+          compact
+            ? {
+                color: colors.ink,
+                fontFamily: fonts.uiMedium,
+                fontSize: 16,
+                lineHeight: 22,
+              }
+            : {
+                color: colors.ink,
+                fontFamily: fonts.uiSemibold,
+                fontSize: 30,
+                lineHeight: 33,
+                letterSpacing: -0.6,
+              }
+        }
       >
         {value}
       </Text>
@@ -487,6 +498,7 @@ export function Banner({
           : colors["ink-2"];
   return (
     <View
+      accessibilityRole={live ? "alert" : undefined}
       accessibilityLiveRegion={live ? "polite" : "none"}
       style={[styles.banner, { backgroundColor: background }]}
     >
@@ -559,6 +571,7 @@ export function Chip({
       {icon && <Icon name={icon} size={16} color={color} />}
       <Label
         style={{
+          flexShrink: 1,
           color,
           fontFamily: fonts.uiMedium,
           fontSize: 14,
@@ -708,7 +721,9 @@ export function Row({
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? title}
+        accessibilityLabel={
+          accessibilityLabel ?? (meta ? `${title}. ${meta}` : title)
+        }
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}

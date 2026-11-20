@@ -34,7 +34,7 @@ export async function getModuleInfo(): Promise<RecorderModuleInfo> {
     !("platform" in result) ||
     result.platform !== "android" ||
     !("contractVersion" in result) ||
-    result.contractVersion !== 10 ||
+    result.contractVersion !== 12 ||
     !("recorderImplemented" in result) ||
     result.recorderImplemented !== true
   ) {

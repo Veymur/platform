@@ -165,6 +165,36 @@ test("Bluetooth denial stops discovery, retry connects explicitly; acceptance do
   assert.equal(f.view().snapshot.sessionState, "preparation");
   assert.equal(f.view().snapshot.sessionId, null);
 });
+test("Bluetooth off blocks search and connect before any native call and the error clears when it is back on", async () => {
+  const f = await fixture();
+  let permissionRequests = 0;
+  f.permissions.requestBluetooth = async () => {
+    permissionRequests++;
+    return true;
+  };
+  f.emit(snapshot(2, { bluetoothEnabled: false }));
+  await f.controller.search();
+  await f.controller.search();
+  await f.controller.connect("ABC123");
+  assert.deepEqual(f.calls, []);
+  assert.equal(permissionRequests, 0);
+  assert.match(f.view().error, /^BLUETOOTH_OFF: /);
+  f.emit(snapshot(3, { bluetoothEnabled: false }));
+  assert.match(f.view().error, /^BLUETOOTH_OFF: /);
+  f.emit(snapshot(4, { bluetoothEnabled: true }));
+  assert.equal(f.view().error, null);
+  await f.controller.search();
+  assert.deepEqual(f.calls, ["Activity", "search"]);
+});
+test("an unrelated error is kept when Bluetooth state changes", async () => {
+  const f = await fixture();
+  f.client.search = async () => {
+    throw new RecorderClientError("DISCOVERY_ERROR", "Search failed");
+  };
+  await f.controller.search();
+  f.emit(snapshot(2, { bluetoothEnabled: true }));
+  assert.match(f.view().error, /^DISCOVERY_ERROR: /);
+});
 test("location denial preserves HR-only start, notifications denial does not block start", async () => {
   const f = await fixture();
   f.permissions.requestRoute = async () => false;

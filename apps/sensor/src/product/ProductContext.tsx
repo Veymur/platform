@@ -15,8 +15,11 @@ import {
   type ScreenInsets,
 } from "../ui/Insets";
 import { useRecorder } from "../recorder/useRecorder";
-import { useReducedMotion } from "../ui/useReducedMotion";
-import { appendLiveSample, type LiveSample, type Units } from "./sessionMath";
+import {
+  liveSamplesAfterSnapshot,
+  type LiveSample,
+  type Units,
+} from "./sessionMath";
 import {
   deviceTimeZone,
   usePreferences,
@@ -32,7 +35,6 @@ export type ProductState = {
   timeZone: string;
   nowMs: number;
   network: NetworkStatus | null;
-  reduceMotion: boolean;
 };
 function useScreenInsets(): ScreenInsets {
   const [insets, setInsets] = useState<ScreenInsets>(fallbackInsets);
@@ -82,24 +84,20 @@ export function ProductProvider({ children }: PropsWithChildren) {
   const [liveSamples, setLiveSamples] = useState<readonly LiveSample[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const lastRevision = useRef(-1);
+  const liveSamplesSessionId = useRef<string | null>(null);
   const insets = useScreenInsets();
   const network = useNetworkStatus();
-  const reduceMotion = useReducedMotion();
   const snapshot = recorder.snapshot;
   useEffect(() => {
     if (!snapshot || snapshot.revision === lastRevision.current) return;
     lastRevision.current = snapshot.revision;
     const now = Date.now();
     setNowMs(now);
-    if (snapshot.sessionState === "paused") return;
-    const sample =
-      snapshot.hrStatus === "fresh" &&
-      snapshot.hr !== null &&
-      snapshot.hrAgeMs !== null &&
-      snapshot.sessionState === "recording"
-        ? { atMs: now - snapshot.hrAgeMs, bpm: snapshot.hr }
-        : { atMs: now, bpm: null };
-    setLiveSamples((samples) => appendLiveSample(samples, sample));
+    const samplesSessionId = liveSamplesSessionId.current;
+    liveSamplesSessionId.current = snapshot.sessionId;
+    setLiveSamples((samples) =>
+      liveSamplesAfterSnapshot(samples, samplesSessionId, snapshot, now),
+    );
   }, [snapshot]);
   const settings = preferences.preferences?.settings ?? null;
   const value: ProductState = {
@@ -108,7 +106,6 @@ export function ProductProvider({ children }: PropsWithChildren) {
     liveSamples,
     nowMs,
     network,
-    reduceMotion,
     units: settings?.units ?? "metric",
     timeZone: settings?.timezone_id ?? deviceTimeZone(),
   };

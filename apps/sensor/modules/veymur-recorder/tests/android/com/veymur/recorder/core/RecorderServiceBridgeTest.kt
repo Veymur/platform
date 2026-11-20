@@ -646,4 +646,46 @@ class RecorderServiceBridgeTest {
             assertFalse(file.exists()); assertFalse(csv.exists())
         } finally { command(service, "finish"); unbind(binding) }
     }
+    @Test fun routeStartedWhileLocationIsOffStaysRequestedAsUnavailableAndRecoversWhenLocationTurnsOn() {
+        val binding = bind(); val service = binding.service
+        try {
+            val db = isolated(service); foreground(service)
+            grant(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            val locationOff: () -> Boolean? = { false }
+            val locationOn: () -> Boolean? = { true }
+            field(service, "readLocationEnabled").set(service, locationOff)
+            RecorderService::class.java.getDeclaredMethod("locationModeChanged").apply { isAccessible = true }.invoke(service)
+            writer(service) {}
+            assertEquals(false, command(service, "getSnapshot").getOrThrow()["locationEnabled"])
+            val listener = field(service, "locations").get(service) as android.location.LocationListener
+            command(service, "start", route = true).getOrThrow()
+            var state = command(service, "getSnapshot").getOrThrow()
+            assertEquals(true, state["routeEnabled"])
+            assertTrue((state["gpsStatus"] as String).contains("GPS disabled"))
+            assertEquals(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+                service.foregroundServiceType and android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            listener.onProviderDisabled(android.location.LocationManager.GPS_PROVIDER)
+            writer(service) {
+                db.rawQuery("SELECT count(*) FROM records WHERE kind='gps_unavailable'", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+            }
+            field(service, "readLocationEnabled").set(service, locationOn)
+            listener.onProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+            writer(service) {}
+            state = command(service, "getSnapshot").getOrThrow()
+            assertEquals("Waiting for coordinates", state["gpsStatus"])
+            listener.onLocationChanged(android.location.Location(android.location.LocationManager.GPS_PROVIDER).apply {
+                latitude = 50.45; longitude = 30.52; accuracy = 5f
+                time = System.currentTimeMillis(); elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+            })
+            writer(service) {}
+            state = command(service, "getSnapshot").getOrThrow()
+            assertEquals(1, state["gpsCount"]); assertEquals("Saving coordinates", state["gpsStatus"])
+            command(service, "pause").getOrThrow()
+            field(service, "readLocationEnabled").set(service, locationOff)
+            command(service, "resume").getOrThrow()
+            state = command(service, "getSnapshot").getOrThrow()
+            assertTrue((state["gpsStatus"] as String).contains("GPS disabled"))
+            command(service, "finish").getOrThrow()
+        } finally { command(service, "finish"); unbind(binding) }
+    }
 }

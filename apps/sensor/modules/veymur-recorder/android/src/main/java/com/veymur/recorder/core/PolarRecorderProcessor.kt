@@ -40,10 +40,12 @@ class PolarRecorderProcessor(
         when (event.eventType) {
             "bluetooth" -> {
                 lastHr = null
-                if (!payload.getBoolean("powered")) snapshot = snapshot.copy(status = "Bluetooth disabled", connected = null, hr = null)
-                record("bluetooth", JSONObject().put("powered", payload.getBoolean("powered")))
+                val powered = payload.getBoolean("powered")
+                snapshot = if (powered) snapshot.copy(bluetoothEnabled = true)
+                else snapshot.copy(bluetoothEnabled = false, status = "Bluetooth is off", connected = null, hr = null)
+                record("bluetooth", JSONObject().put("powered", powered))
             }
-            "connecting" -> snapshot = snapshot.copy(status = "Connecting to ${event.deviceId}…")
+            "connecting" -> if (snapshot.bluetoothEnabled != false) snapshot = snapshot.copy(status = "Connecting to ${event.deviceId}…")
             "connected" -> {
                 lastHr = null
                 snapshot = snapshot.copy(connected = event.deviceId, hr = null, battery = null, status = "Sensor connected; waiting for fresh heart rate")
@@ -54,7 +56,8 @@ class PolarRecorderProcessor(
                 // new session event. Raw diagnostic input still contains both copies.
                 if (snapshot.connected == null) return false
                 lastHr = null
-                snapshot = snapshot.copy(connected = null, hr = null, status = "Connection lost. Keep the sensor nearby or reconnect the selected sensor")
+                snapshot = snapshot.copy(connected = null, hr = null, status = if (snapshot.bluetoothEnabled == false) "Bluetooth is off"
+                    else "Connection lost. Keep the sensor nearby or reconnect the selected sensor")
                 record("disconnected", JSONObject().put("device", event.deviceId)
                     .put("stream", "hr").put("quality_flags", org.json.JSONArray(listOf("missing"))))
             }

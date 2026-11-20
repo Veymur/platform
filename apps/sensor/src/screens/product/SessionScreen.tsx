@@ -12,6 +12,11 @@ import {
 } from "../../ui/components";
 import { ContourArt } from "../../ui/Contours";
 import { Icon } from "../../ui/Icon";
+import {
+  stableHeartRateScale,
+  type HeartRateBand,
+  type HeartRateScale,
+} from "../../ui/heartRateScale";
 import { LineChart } from "../../ui/LineChart";
 import { AppBar, Screen } from "../../ui/Screen";
 import { useTheme } from "../../ui/Theme";
@@ -24,15 +29,20 @@ import {
   displayActiveMs,
   formatAge,
   formatClock,
-  formatDistance,
-  liveChartValues,
+  liveDistanceLabel,
+  liveChartWindow,
   monotonicNowMs,
   rangeContaining,
   withoutErrorCode,
   type UserRange,
 } from "../../product/sessionMath";
 import type { RecorderSnapshot } from "../../recorder/types";
-import { OpenSettingsAction } from "./shared";
+import {
+  sessionRouteLabel,
+  sessionRouteUnavailable,
+} from "../../recorder/routeAvailability";
+import { hrReplayEnabled } from "../../dev/hrReplay";
+import { OpenBluetoothSettingsAction, OpenSettingsAction } from "./shared";
 
 function useSessionRanges(
   sessionId: string | null,
@@ -90,6 +100,16 @@ function useDisplayActiveMs(
     anchor.current.at,
     monotonicNowMs(),
   );
+}
+
+function useStableHeartRateScale(
+  values: readonly (number | null)[],
+  band: HeartRateBand | null,
+): HeartRateScale | null {
+  const [scale, setScale] = useState<HeartRateScale | null>(null);
+  const next = stableHeartRateScale(scale, values, band);
+  if (next !== scale) setScale(next);
+  return next;
 }
 
 const titles = {
@@ -154,10 +174,15 @@ function RangeReadout({
             ? `Below your range · ${bounds.from} bpm`
             : "Outside your ranges";
   return (
-    <View style={[styles.rangeReadout, { backgroundColor: background }]}>
+    <View
+      accessible
+      accessibilityLabel={text}
+      style={[styles.rangeReadout, { backgroundColor: background }]}
+    >
       <Icon name={icon} size={16} color={foreground} />
       <Label
         style={{
+          flexShrink: 1,
           color: foreground,
           fontFamily: fonts.uiSemibold,
           fontSize: 14,
@@ -172,30 +197,40 @@ function RangeReadout({
 
 export function SessionScreen() {
   const { colors } = useTheme();
-  const { recorder, liveSamples, nowMs, network, units } = useProduct();
+  const { recorder, preferences, liveSamples, nowMs, network, units } =
+    useProduct();
   const { snapshot, controller, pending, error } = recorder;
   const [confirmFinish, setConfirmFinish] = useState(false);
-  const ranges = useSessionRanges(snapshot?.sessionId ?? null);
+  const recordedSessionRanges = useSessionRanges(
+    hrReplayEnabled ? null : (snapshot?.sessionId ?? null),
+  );
+  const ranges = hrReplayEnabled
+    ? (preferences.preferences?.hr_ranges?.ranges ?? null)
+    : recordedSessionRanges;
   const state = snapshot?.sessionState ?? "preparation";
   const shownActiveMs = useDisplayActiveMs(snapshot?.activeMs ?? 0, state);
-  if (!snapshot) return null;
-  const busy = pending !== null;
-  const interrupted = state === "interrupted";
   const paused = state === "paused";
-  const connected = snapshot.connectedDeviceId !== null;
-  const fresh = snapshot.hrStatus === "fresh" && snapshot.hr !== null;
-  const rangeActive = snapshot.alertsStatus === "enabled";
-  const position =
-    fresh && rangeActive ? rangeContaining(snapshot.hr!, ranges) : null;
+  const rangeActive = snapshot?.alertsStatus === "enabled";
   const bounds = boundsFromRanges(ranges);
   const activeBounds = rangeActive ? bounds : null;
   const chartNow = paused ? (liveSamples.at(-1)?.atMs ?? nowMs) : nowMs;
+  const liveWindow = liveChartWindow(liveSamples, chartNow);
+  const liveValues = liveWindow.values;
+  const liveBand = activeBounds
+    ? { min: activeBounds.from, max: activeBounds.to }
+    : null;
+  const liveScale = useStableHeartRateScale(liveValues, liveBand);
+  if (!snapshot) return null;
+  const busy = pending !== null;
+  const interrupted = state === "interrupted";
+  const connected = snapshot.connectedDeviceId !== null;
+  const fresh = snapshot.hrStatus === "fresh" && snapshot.hr !== null;
+  const position =
+    fresh && rangeActive ? rangeContaining(snapshot.hr!, ranges) : null;
   const alertsBlocked =
     snapshot.alertsStatus === "notification_permission_denied" ||
     snapshot.alertsStatus === "notifications_disabled";
-  const gpsUnavailable =
-    snapshot.routeEnabled &&
-    /no recent|gps disabled|permission denied/i.test(snapshot.gpsStatus);
+  const gpsUnavailable = sessionRouteUnavailable(snapshot);
   const lastPulseMark =
     snapshot.hrAgeMs === null
       ? "No pulse reading yet"
@@ -208,6 +243,7 @@ export function SessionScreen() {
     <Mono
       accessible
       accessibilityLabel={`Active time ${formatClock(shownActiveMs)}`}
+      maxFontSizeMultiplier={1.3}
       size={28}
       style={{
         lineHeight: 31,
@@ -316,22 +352,20 @@ export function SessionScreen() {
       </View>
       <View style={styles.chartBlock}>
         <LineChart
-          values={liveChartValues(liveSamples, chartNow)}
+          values={liveValues}
           height={112}
-          yMin={80}
-          yMax={150}
-          yTicks={[90, 120, 150]}
+          yMin={liveScale?.min}
+          yMax={liveScale?.max}
+          yTicks={liveScale?.ticks}
           xTicks={[
             { index: 0, label: "−90 s" },
             { index: 89, label: "now" },
           ]}
-          band={
-            activeBounds
-              ? { min: activeBounds.from, max: activeBounds.to }
-              : null
-          }
+          band={liveBand}
           label="Pulse over the last 90 seconds"
           gapLabel="No pulse"
+          firstCoveredIndex={liveWindow.firstCoveredIndex}
+          gapEdges={false}
           endDot
         />
         <Caption>
@@ -345,31 +379,20 @@ export function SessionScreen() {
           <Detail
             title="Distance"
             value={
-              snapshot.gpsDistanceM === null
-                ? snapshot.routeEnabled
-                  ? "Waiting"
-                  : "—"
-                : formatDistance(snapshot.gpsDistanceM, units)
+              liveDistanceLabel(
+                snapshot.gpsDistanceM,
+                snapshot.routeEnabled,
+                units,
+              ) ?? "—"
             }
-            note={
-              snapshot.routeEnabled
-                ? `${snapshot.gpsCount} points saved`
-                : "Route off"
-            }
+            note={snapshot.routeEnabled ? undefined : "Route off"}
           />
         </View>
         <View style={{ flex: 1 }}>
           <Detail
             title="Route"
-            value={
-              snapshot.routeEnabled
-                ? gpsUnavailable
-                  ? "Unavailable"
-                  : paused
-                    ? "Paused"
-                    : "Recording"
-                : "Off"
-            }
+            compact
+            value={sessionRouteLabel(snapshot, paused)}
             note={paused ? "Not counting" : undefined}
           />
         </View>
@@ -381,8 +404,19 @@ export function SessionScreen() {
           detail="Timer and route recording are stopped. Resuming starts a new segment, without a line across the pause."
         />
       )}
-      {!connected && !paused && (
+      {snapshot.bluetoothEnabled === false && (
         <Banner
+          live
+          tone="dusk"
+          icon="bluetooth"
+          title="Bluetooth is off"
+          detail="No pulse is being received. Turn Bluetooth on to reconnect the sensor. You can pause or finish; the part recorded so far and the route stay saved."
+          action={<OpenBluetoothSettingsAction />}
+        />
+      )}
+      {!connected && !paused && snapshot.bluetoothEnabled !== false && (
+        <Banner
+          live
           tone="dusk"
           icon="bluetooth"
           title="Connection to the sensor lost"
@@ -391,6 +425,7 @@ export function SessionScreen() {
       )}
       {connected && !paused && snapshot.hrStatus === "stale" && (
         <Banner
+          live
           tone="dusk"
           icon="clock"
           title="No current pulse"
@@ -399,6 +434,7 @@ export function SessionScreen() {
       )}
       {gpsUnavailable && !paused && (
         <Banner
+          live
           tone="dusk"
           icon="location"
           title="Route temporarily unavailable"
@@ -468,9 +504,11 @@ export function SessionScreen() {
       >
         <Label>
           {`${formatClock(shownActiveMs)} · ${
-            snapshot.gpsDistanceM === null
-              ? "route distance unavailable"
-              : formatDistance(snapshot.gpsDistanceM, units)
+            liveDistanceLabel(
+              snapshot.gpsDistanceM,
+              snapshot.routeEnabled,
+              units,
+            ) ?? "route distance unavailable"
           }. The session is saved on this phone.`}
         </Label>
         <Action

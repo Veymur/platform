@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import {
   Action,
-  Dialog,
   Label,
   NumberField,
   Segmented,
   Warning,
 } from "../../ui/components";
+import { Sheet } from "../../ui/Sheet";
 import { useTheme } from "../../ui/Theme";
 import { useProduct } from "../../product/ProductContext";
 import { requestNotificationPermission } from "../../recorder/permissions";
@@ -17,6 +17,7 @@ import {
   alertModeOf,
   boundsFromRanges,
   parseRangeBounds,
+  rangeChoiceUnchanged,
   rangesFromBounds,
   type AlertMode,
 } from "../../product/sessionMath";
@@ -54,6 +55,22 @@ export function RangeEditor({
   }, [visible]);
   const sessionActive = recorder.snapshot?.sessionId != null;
   const save = async () => {
+    const unchanged = rangeChoiceUnchanged(
+      {
+        bounds: boundsFromRanges(current?.hr_ranges?.ranges),
+        rangesSelected:
+          current?.hr_ranges != null &&
+          current.settings?.hr_ranges_id === current.hr_ranges.id,
+        alerts: current?.settings?.alerts ?? null,
+      },
+      from,
+      to,
+      signal,
+    );
+    if (unchanged) {
+      onClose();
+      return;
+    }
     const parsed = parseRangeBounds(from, to);
     if ("error" in parsed) {
       setError(parsed.error);
@@ -99,12 +116,7 @@ export function RangeEditor({
     }
   };
   return (
-    <Dialog
-      visible={visible}
-      title="Your pulse range"
-      onClose={onClose}
-      closeTitle="Cancel"
-    >
+    <Sheet visible={visible} title="Your pulse range" onClose={onClose}>
       <Label>
         These are your own numbers. veymur doesn’t suggest a range and doesn’t
         call anything outside it dangerous.
@@ -164,6 +176,6 @@ export function RangeEditor({
           }}
         />
       )}
-    </Dialog>
+    </Sheet>
   );
 }

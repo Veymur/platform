@@ -22,9 +22,13 @@ import { useTheme } from "../../ui/Theme";
 import { Body, Caption, H2 } from "../../ui/Typography";
 import { fonts } from "../../ui/tokens";
 import { useProduct } from "../../product/ProductContext";
+import {
+  automaticSensorSearchAllowed,
+  bluetoothAvailability,
+} from "../../recorder/bluetoothAvailability";
 import { productPermissions } from "../../recorder/permissions";
 import { withoutErrorCode } from "../../product/sessionMath";
-import { Muted } from "./shared";
+import { Muted, OpenBluetoothSettingsAction } from "./shared";
 
 function Radar({
   seed,
@@ -94,6 +98,7 @@ function SensorOption({
       </View>
       <Action
         title="Connect"
+        accessibilityLabel={`Connect ${name}, ID ${id}`}
         size="sm"
         block={false}
         disabled={disabled}
@@ -115,6 +120,7 @@ export function ConnectScreen({
   const [granted, setGranted] = useState<boolean | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [lastTarget, setLastTarget] = useState<string | null>(null);
+  const [interruptedByBluetooth, setInterruptedByBluetooth] = useState(false);
   const autoSearched = useRef(false);
   const refreshPermission = useCallback(async () => {
     const value = await productPermissions.bluetoothGranted();
@@ -124,6 +130,7 @@ export function ConnectScreen({
   const search = useCallback(async () => {
     setSettingsError(null);
     setLastTarget(null);
+    setInterruptedByBluetooth(false);
     await controller.search();
     await refreshPermission();
   }, [controller, refreshPermission]);
@@ -139,22 +146,34 @@ export function ConnectScreen({
       ),
     );
   };
+  const availability = bluetoothAvailability(
+    snapshot?.bluetoothEnabled,
+    granted,
+  );
   useEffect(() => {
     void refreshPermission();
   }, [refreshPermission]);
   useEffect(() => {
+    if (availability !== "off") return;
+    setLastTarget(null);
+    setInterruptedByBluetooth(true);
+  }, [availability]);
+  useEffect(() => {
     if (
-      !granted ||
-      autoSearched.current ||
-      !snapshot?.ready ||
-      snapshot.connectedDeviceId ||
-      snapshot.selectedDeviceId ||
-      snapshot.discoveryActive
+      !snapshot ||
+      !automaticSensorSearchAllowed({
+        availability,
+        recorderReady: snapshot.ready,
+        alreadySearched: autoSearched.current,
+        sensorConnected: snapshot.connectedDeviceId !== null,
+        sensorSelected: snapshot.selectedDeviceId !== null,
+        discoveryActive: snapshot.discoveryActive,
+      })
     )
       return;
     autoSearched.current = true;
     void search();
-  }, [granted, snapshot, search]);
+  }, [availability, snapshot, search]);
   const appBar = (
     <AppBar
       title="Connect a sensor"
@@ -166,7 +185,7 @@ export function ConnectScreen({
       {content}
     </Screen>
   );
-  if (granted === null || !snapshot)
+  if (!snapshot || availability === "checking")
     return frame(<Status live title="Checking Bluetooth permission…" />);
   const busy = pending !== null;
   const connected = snapshot.connectedDeviceId;
@@ -183,7 +202,26 @@ export function ConnectScreen({
     lastTarget !== null &&
     !failedTarget &&
     !snapshot.discoveryActive;
-  if (!granted)
+  if (availability === "off")
+    return frame(
+      <>
+        <Radar seed={2} icon="bluetooth" height={144} wobble={0.12} />
+        <H2>Bluetooth is off</H2>
+        <Body>
+          Turn on Bluetooth to find and connect your heart-rate sensor. Your
+          saved sessions stay available on this phone.
+        </Body>
+        <Muted>
+          Sensor search and connection are stopped while Bluetooth is off.
+        </Muted>
+        {settingsError && <Warning title={settingsError} />}
+      </>,
+      <>
+        <OpenBluetoothSettingsAction prominent onError={setSettingsError} />
+        {onBack && <Action title="Not now" variant="quiet" onPress={onBack} />}
+      </>,
+    );
+  if (availability === "permission_denied")
     return frame(
       <>
         <Radar seed={2} icon="bluetooth" height={144} wobble={0.12} />
@@ -297,6 +335,8 @@ export function ConnectScreen({
       />,
     );
   const searching = snapshot.discoveryActive || pending === "Search";
+  const bluetoothReturned =
+    interruptedByBluetooth && !searching && snapshot.devices.length === 0;
   return frame(
     <>
       <Radar
@@ -305,13 +345,21 @@ export function ConnectScreen({
         wobble={searching ? 0.16 : 0.12}
       />
       <View style={{ gap: 8 }}>
-        <H2>{searching ? "Looking for sensors" : "Select your sensor"}</H2>
+        <H2>
+          {searching
+            ? "Looking for sensors"
+            : bluetoothReturned
+              ? "Bluetooth is on"
+              : "Select your sensor"}
+        </H2>
         <Muted>
           {searching
             ? "Turn your sensor on and keep it close to the phone."
-            : snapshot.devices.length
-              ? "Choose the sensor you are wearing."
-              : "No sensors found. Turn the sensor on, keep it close and search again."}
+            : bluetoothReturned
+              ? "Search for your sensor to connect it."
+              : snapshot.devices.length
+                ? "Choose the sensor you are wearing."
+                : "No sensors found. Turn the sensor on, keep it close and search again."}
         </Muted>
       </View>
       {snapshot.devices.map((device) => (
@@ -347,8 +395,8 @@ export function ConnectScreen({
       />
     ) : (
       <Action
-        title="Search again"
-        variant="secondary"
+        title={bluetoothReturned ? "Search for sensors" : "Search again"}
+        variant={bluetoothReturned ? "primary" : "secondary"}
         size="lg"
         disabled={busy}
         onPress={() => {

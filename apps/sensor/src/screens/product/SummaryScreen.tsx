@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, useWindowDimensions } from "react-native";
 import {
   Action,
   Card,
@@ -124,6 +124,8 @@ export function SummaryScreen({
   onDeleted: () => void;
 }) {
   const { units, timeZone } = useProduct();
+  const { fontScale } = useWindowDimensions();
+  const largeText = fontScale >= 1.5;
   const { loaded, error, retry } = useSessionSummary(sessionId);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -247,12 +249,14 @@ export function SummaryScreen({
   );
   return (
     <Screen appBar={summaryAppBar} actions={close}>
-      <View style={styles.header}>
-        <View style={styles.headerCopy}>
+      <View style={[styles.header, largeText && styles.headerLarge]}>
+        <View style={[styles.headerCopy, largeText && styles.headerCopyLarge]}>
           <Eyebrow>
             Session · {formatDateTime(session.started_utc_ms, timeZone)}
           </Eyebrow>
-          <H1 style={styles.duration}>{durationLabel}</H1>
+          <H1 maxFontSizeMultiplier={1.3} style={styles.duration}>
+            {durationLabel}
+          </H1>
           <Caption>active time</Caption>
         </View>
         {summary && (
@@ -286,7 +290,7 @@ export function SummaryScreen({
       {summary && (
         <Card variant="flat" style={styles.statsCard}>
           <View style={styles.statGrid}>
-            <View style={styles.statCell}>
+            <View style={[styles.statCell, largeText && styles.statCellLarge]}>
               <Detail
                 title="Distance"
                 value={
@@ -305,7 +309,7 @@ export function SummaryScreen({
                 }
               />
             </View>
-            <View style={styles.statCell}>
+            <View style={[styles.statCell, largeText && styles.statCellLarge]}>
               <Detail
                 title="Average pulse"
                 value={
@@ -320,14 +324,14 @@ export function SummaryScreen({
                 }
               />
             </View>
-            <View style={styles.statCell}>
+            <View style={[styles.statCell, largeText && styles.statCellLarge]}>
               <Detail
                 title="Cadence"
                 value="Not available"
                 note="This sensor does not report cadence."
               />
             </View>
-            <View style={styles.statCell}>
+            <View style={[styles.statCell, largeText && styles.statCellLarge]}>
               <Detail
                 title="Route"
                 value={session.route_requested ? "Recorded" : "Not recorded"}
@@ -382,9 +386,6 @@ export function SummaryScreen({
           <LineChart
             values={chartValues}
             height={168}
-            yMin={80}
-            yMax={150}
-            yTicks={[90, 120, 150]}
             xTicks={chartXTicks}
             band={chartBand ? { min: chartBand.from, max: chartBand.to } : null}
             label="Pulse during the session"
@@ -474,7 +475,12 @@ const styles = StyleSheet.create({
     gap: 20,
     paddingVertical: 4,
   },
+  headerLarge: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+  },
   headerCopy: { flex: 1, gap: 4 },
+  headerCopyLarge: { width: "100%", flexGrow: 0 },
   duration: {
     fontSize: 48,
     lineHeight: 50,
@@ -489,5 +495,8 @@ const styles = StyleSheet.create({
     flexBasis: "47%",
     flexGrow: 1,
     minWidth: 140,
+  },
+  statCellLarge: {
+    flexBasis: "100%",
   },
 });

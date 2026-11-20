@@ -108,6 +108,27 @@ export function alertModeOf(alerts: {
 }): AlertMode {
   return alerts.sound ? "sound" : alerts.vibration ? "vibration" : "silent";
 }
+export type SavedRangeChoice = {
+  bounds: RangeBounds | null;
+  rangesSelected: boolean;
+  alerts: { enabled: boolean; sound: boolean; vibration: boolean } | null;
+};
+export function rangeChoiceUnchanged(
+  saved: SavedRangeChoice,
+  fromText: string,
+  toText: string,
+  signal: AlertMode,
+): boolean {
+  if (!saved.bounds || !saved.rangesSelected || !saved.alerts?.enabled)
+    return false;
+  const parsed = parseRangeBounds(fromText, toText);
+  return (
+    !("error" in parsed) &&
+    parsed.bounds.from === saved.bounds.from &&
+    parsed.bounds.to === saved.bounds.to &&
+    alertModeOf(saved.alerts) === signal
+  );
+}
 export function alertDelivery(mode: AlertMode) {
   return { sound: mode === "sound", vibration: mode === "vibration" };
 }
@@ -313,23 +334,67 @@ export function liveChartColumns(
   });
 }
 
-/** Line-chart projection of the live window; null keeps gaps instead of zero. */
-export function liveChartValues(
+export type LiveChartWindow = {
+  values: (number | null)[];
+  firstCoveredIndex: number;
+};
+export function liveChartWindow(
   samples: readonly LiveSample[],
   nowMs: number,
   windowMs = 90000,
   count = 90,
-): (number | null)[] {
+  readingFreshMs = provisionalAggregateParameters.hr_stale_after_ms,
+): LiveChartWindow {
   const width = windowMs / count;
   const start = nowMs - windowMs;
-  return Array.from({ length: count }, (_, column) => {
-    const from = start + column * width;
-    const to = from + width;
-    const latest = samples
-      .filter((sample) => sample.atMs >= from && sample.atMs < to)
-      .at(-1);
-    return latest?.bpm ?? null;
+  let latestIndex = -1;
+  const values = Array.from({ length: count }, (_, column) => {
+    const columnEnd = start + (column + 1) * width;
+    while (
+      latestIndex + 1 < samples.length &&
+      samples[latestIndex + 1].atMs < columnEnd
+    )
+      latestIndex++;
+    const latest = latestIndex >= 0 ? samples[latestIndex] : null;
+    if (!latest || latest.bpm === null) return null;
+    return columnEnd - latest.atMs <= readingFreshMs ? latest.bpm : null;
   });
+  const firstAtMs = samples[0]?.atMs;
+  const firstCoveredIndex =
+    firstAtMs === undefined
+      ? count
+      : Math.min(count, Math.max(0, Math.floor((firstAtMs - start) / width)));
+  return { values, firstCoveredIndex };
+}
+export type LiveSnapshotReading = {
+  sessionId: string | null;
+  sessionState: string;
+  hrStatus: string;
+  hr: number | null;
+  hrAgeMs: number | null;
+};
+export function liveSamplesAfterSnapshot(
+  samples: readonly LiveSample[],
+  samplesSessionId: string | null,
+  snapshot: LiveSnapshotReading,
+  nowMs: number,
+): readonly LiveSample[] {
+  if (snapshot.sessionId === null) return samples.length ? [] : samples;
+  const current = snapshot.sessionId === samplesSessionId ? samples : [];
+  if (snapshot.sessionState === "paused") {
+    const last = current.at(-1);
+    return last === undefined || last.bpm === null
+      ? current
+      : appendLiveSample(current, { atMs: nowMs, bpm: null });
+  }
+  const reading =
+    snapshot.sessionState === "recording" &&
+    snapshot.hrStatus === "fresh" &&
+    snapshot.hr !== null &&
+    snapshot.hrAgeMs !== null
+      ? { atMs: nowMs - snapshot.hrAgeMs, bpm: snapshot.hr }
+      : { atMs: nowMs, bpm: null };
+  return appendLiveSample(current, reading);
 }
 export function describeColumns(columns: readonly ChartColumn[]): {
   min: number | null;
@@ -393,8 +458,16 @@ export function formatDuration(ms: number): string {
 }
 export function formatDistance(meters: number, units: Units): string {
   return units === "imperial"
-    ? `${(meters / 1609.344).toFixed(2)} mi`
-    : `${(meters / 1000).toFixed(2)} km`;
+    ? `${(meters / 1609.344).toFixed(1)} mi`
+    : `${(meters / 1000).toFixed(1)} km`;
+}
+export function liveDistanceLabel(
+  distanceM: number | null,
+  routeEnabled: boolean,
+  units: Units,
+): string | null {
+  if (distanceM === null && !routeEnabled) return null;
+  return formatDistance(distanceM ?? 0, units);
 }
 export function formatPercent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`;

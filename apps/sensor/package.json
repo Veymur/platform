@@ -12,6 +12,8 @@
     "start": "expo start --dev-client",
     "prebuild:android": "expo prebuild --platform android --no-install",
     "android": "expo run:android",
+    "android:replay": "EXPO_PUBLIC_HR_REPLAY=${HR_REPLAY:-1} EXPO_PUBLIC_HR_REPLAY_SPEED=${HR_REPLAY_SPEED:-1} expo run:android",
+    "replay:prepare": "node scripts/prepare-hr-replay.cjs",
     "build:android": "android/gradlew -p android :app:assembleDebug",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",

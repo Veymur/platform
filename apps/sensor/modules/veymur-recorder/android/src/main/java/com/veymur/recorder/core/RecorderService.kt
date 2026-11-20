@@ -2,6 +2,8 @@ package com.veymur.recorder.core
 
 import android.Manifest
 import android.app.*
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -28,7 +30,8 @@ data class RecorderSnapshot(
     val hrCount: Int = 0, val gpsCount: Int = 0, val activeMs: Long = 0, val lastCommit: Long = 0,
     val alertsStatus: String = "disabled", val storageWarning: String? = null,
     val revision: Long = 0, val errorCode: String? = null, val recovered: Int = 0, val gpsStatus: String = "Route disabled",
-    val gpsDistanceM: Double? = null, val ready: Boolean = false
+    val gpsDistanceM: Double? = null, val bluetoothEnabled: Boolean? = null, val locationEnabled: Boolean? = null,
+    val ready: Boolean = false
 )
 
 class RecorderService : Service() {
@@ -72,6 +75,7 @@ class RecorderService : Service() {
     private var gpsExpectedSinceNs = 0L
     private var lastGpsReceiptNs = 0L
     private var gpsGap = false
+    private var gpsLocationOff = false
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var routeEnabled = false
     @Volatile private var starting = false
@@ -83,6 +87,41 @@ class RecorderService : Service() {
         override fun onReceive(context: Context, intent: Intent) = enqueue {
             record(if (intent.action == Intent.ACTION_SCREEN_OFF) "screen_off" else "screen_on", JSONObject())
         }
+    }
+    private val locationModeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = locationModeChanged()
+    }
+    private fun locationModeChanged() {
+        val enabled = locationEnabled()
+        enqueue { snapshot = snapshot.copy(locationEnabled = enabled) }
+    }
+    private var readLocationEnabled: () -> Boolean? = { try { gps.isLocationEnabled } catch (_: Exception) { null } }
+    private fun locationEnabled(): Boolean? = readLocationEnabled()
+    private var bluetoothReceiverRegistered = false
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) bluetoothStateChanged()
+        }
+    }
+    private fun bluetoothStateChanged() {
+        val enabled = bluetoothEnabled()
+        if (enabled == false) stopBluetoothActivity()
+        enqueue {
+            snapshot = snapshot.copy(bluetoothEnabled = enabled)
+            if (enabled == false) {
+                snapshot = snapshot.copy(devices = emptyList(), connected = null, hr = null, status = "Bluetooth is off")
+                resetRangeAlerts()
+            } else if (enabled == true && !snapshot.recording && snapshot.connected == null) {
+                snapshot = snapshot.copy(status = "Turn on your sensor and search for it")
+            }
+        }
+    }
+    private fun stopBluetoothActivity() {
+        activeSearchId = null
+        searchJob?.cancel(); searchJob = null
+        val pendingDevice = selected
+        if (pendingDevice != null && session == null && !starting && ::api.isInitialized)
+            try { api.disconnectFromDevice(pendingDevice) } catch (_: Exception) { }
     }
     private val gps by lazy { getSystemService(LocationManager::class.java) }
     private val locations = object : LocationListener {
@@ -114,27 +153,32 @@ class RecorderService : Service() {
                         .put("source_elapsed_nanos", input.elapsed_ns ?: JSONObject.NULL).put("mock", input.mock)
                         .put("observation_metadata", observationMetadata(sample.time, sample.quality)))
                     liveGpsDistance.offer(sample, gpsFixNs(sample, receipt))
-                    lastGpsReceiptNs = receipt.elapsed_ns; gpsGap = false
+                    lastGpsReceiptNs = receipt.elapsed_ns; gpsGap = false; gpsLocationOff = false
                     snapshot = snapshot.copy(gpsCount = snapshot.gpsCount + 1, gpsStatus = "Saving coordinates",
                         gpsDistanceM = liveGpsDistance.distanceM)
                 }
             }
         }
-        override fun onProviderDisabled(provider: String) = enqueue {
-            if (!routeEnabled || !snapshot.recording || snapshot.paused) return@enqueue
-            gpsGap = true
-            liveGpsDistance.breakLine()
-            snapshot = snapshot.copy(gpsStatus = "GPS disabled; heart rate recording continues")
-            record("gps_unavailable", JSONObject().put("provider", provider).put("stream", "gps")
-                .put("quality_flags", org.json.JSONArray(listOf("missing"))))
-        }
+        override fun onProviderDisabled(provider: String) = enqueue { gpsProviderUnavailable(provider) }
         override fun onProviderEnabled(provider: String) = enqueue {
             if (routeEnabled && snapshot.recording && !snapshot.paused) {
-                gpsGap = false; gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L
+                gpsGap = false; gpsLocationOff = false; gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L
                 liveGpsDistance.breakLine()
                 snapshot = snapshot.copy(gpsStatus = "Waiting for coordinates")
             }
         }
+    }
+    private fun gpsProviderUnavailable(provider: String) {
+        if (!routeEnabled || !snapshot.recording || snapshot.paused || gpsLocationOff) return
+        gpsLocationOff = true
+        gpsGap = true
+        liveGpsDistance.breakLine()
+        snapshot = snapshot.copy(gpsStatus = "GPS disabled; heart rate recording continues")
+        record("gps_unavailable", JSONObject().put("provider", provider).put("stream", "gps")
+            .put("quality_flags", org.json.JSONArray(listOf("missing"))))
+    }
+    private fun markGpsUnavailableWhileLocationOff() {
+        if (locationEnabled() == false) gpsProviderUnavailable(LocationManager.GPS_PROVIDER)
     }
     override fun onBind(intent: Intent) = LocalBinder()
     override fun onCreate() {
@@ -143,12 +187,22 @@ class RecorderService : Service() {
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
         }, Context.RECEIVER_NOT_EXPORTED)
+        registerReceiver(locationModeReceiver, IntentFilter().apply {
+            addAction(LocationManager.MODE_CHANGED_ACTION); addAction(LocationManager.PROVIDERS_CHANGED_ACTION)
+        }, Context.RECEIVER_NOT_EXPORTED)
+        try {
+            registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), Context.RECEIVER_NOT_EXPORTED)
+            bluetoothReceiverRegistered = true
+        } catch (_: SecurityException) { }
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("recorder", "Sensor recording", NotificationManager.IMPORTANCE_LOW))
         enqueue {
             journal = Journal(this)
             engine = RecorderSession(journal!!, clock)
-            snapshot = snapshot.copy(ready = true, recovered = journal!!.recoverInterrupted(), status = "Turn on your sensor and search for it")
+            val enabled = bluetoothEnabled()
+            snapshot = snapshot.copy(ready = true, recovered = journal!!.recoverInterrupted(), bluetoothEnabled = enabled,
+                locationEnabled = locationEnabled(),
+                status = if (enabled == false) "Bluetooth is off" else "Turn on your sensor and search for it")
         }
         // Opening/recovery is independent of recorder storage and never enables capture.
         val diagnostics = DiagnosticJournal(this)
@@ -289,6 +343,11 @@ class RecorderService : Service() {
     }
     private fun search() {
         if (snapshot.recording || starting || session != null) throw RecorderError("INVALID_STATE", "Finish the current session before searching")
+        if (bluetoothEnabled() == false) {
+            snapshot = snapshot.copy(bluetoothEnabled = false, devices = emptyList(), status = "Bluetooth is off")
+            publish()
+            throw RecorderError("BLUETOOTH_OFF", "Bluetooth is off. Turn it on to search for a sensor")
+        }
         searchJob?.cancel()
         enqueue { snapshot = snapshot.copy(devices = emptyList(), errorCode = null, status = "Searching for Verity Sense…") }
         val subscriptionId = java.util.UUID.randomUUID().toString()
@@ -310,6 +369,11 @@ class RecorderService : Service() {
     }
     private fun cancelSearch() { activeSearchId = null; searchJob?.cancel(); enqueue { snapshot = snapshot.copy(status = "Search stopped") } }
     private fun connect(id: String) {
+        if (bluetoothEnabled() == false) {
+            snapshot = snapshot.copy(bluetoothEnabled = false, status = "Bluetooth is off")
+            publish()
+            throw RecorderError("BLUETOOTH_OFF", "Bluetooth is off. Turn it on to connect a sensor")
+        }
         if (session != null && engine?.state == "interrupted") throw RecorderError("INVALID_STATE", "Save the available portion before reconnecting")
         if ((snapshot.recording || starting || session != null) && (id != selected || snapshot.connected != null))
             throw RecorderError("INVALID_STATE", "Only reconnecting the selected sensor is allowed during a session")
@@ -333,7 +397,7 @@ class RecorderService : Service() {
         if (snapshot.recording || starting || finishing || session != null) throw RecorderError("INVALID_STATE", "A session is already active")
         starting = true
         try {
-            routeEnabled = route && gps.isLocationEnabled &&
+            routeEnabled = route &&
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             holdResources()
             workerCommand(done, command) {
@@ -343,7 +407,8 @@ class RecorderService : Service() {
                     .put("device_info", JSONObject(deviceDetails.toMap())).put("phone_battery_percent", phoneBattery()))
                 snapshot = snapshot.copy(gpsDistanceM = liveGpsDistance.distanceM)
                 alertSegmentStartNs = SystemClock.elapsedRealtimeNanos()
-                gpsExpectedSinceNs = alertSegmentStartNs; lastGpsReceiptNs = 0L; gpsGap = false
+                gpsExpectedSinceNs = alertSegmentStartNs; lastGpsReceiptNs = 0L; gpsGap = false; gpsLocationOff = false
+                markGpsUnavailableWhileLocationOff()
                 main.post { starting = false; if (routeEnabled && snapshot.recording && !snapshot.paused) requestGps() }
                 mapOf("sessionId" to id)
             }
@@ -355,6 +420,8 @@ class RecorderService : Service() {
         if (lastActivityVisible == visible) return
         lastActivityVisible = visible
         if (::api.isInitialized && visible && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) api.foregroundEntered()
+        if (visible && snapshot.ready && bluetoothEnabled() != snapshot.bluetoothEnabled) bluetoothStateChanged()
+        if (visible && snapshot.ready && locationEnabled() != snapshot.locationEnabled) locationModeChanged()
         enqueue { record(if (visible) "activity_foreground" else "activity_background", JSONObject()) }
     }
     private fun requestGps() {
@@ -440,8 +507,9 @@ class RecorderService : Service() {
                                 if (previousState != engine!!.state) {
                                     resetRangeAlerts()
                                     liveGpsDistance.breakLine()
-                                    gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L; gpsGap = false
+                                    gpsExpectedSinceNs = SystemClock.elapsedRealtimeNanos(); lastGpsReceiptNs = 0L; gpsGap = false; gpsLocationOff = false
                                     snapshot = snapshot.copy(gpsStatus = if (!routeEnabled) "Route disabled" else if (snapshot.paused) "Paused" else "Waiting for coordinates")
+                                    markGpsUnavailableWhileLocationOff()
                                 }
                                 main.post {
                                     if (snapshot.paused) gps.removeUpdates(locations) else if (routeEnabled && snapshot.recording) requestGps()
@@ -498,12 +566,16 @@ class RecorderService : Service() {
             "devices" to snapshot.devices.map { mapOf("id" to it.deviceId, "name" to it.name, "address" to it.address) },
             "hrCount" to snapshot.hrCount, "gpsCount" to snapshot.gpsCount, "activeMs" to snapshot.activeMs,
             "lastCommitUtcMs" to snapshot.lastCommit.takeIf { it > 0 }, "gpsStatus" to snapshot.gpsStatus,
-            "gpsDistanceM" to snapshot.gpsDistanceM,
+            "gpsDistanceM" to snapshot.gpsDistanceM, "bluetoothEnabled" to snapshot.bluetoothEnabled,
+            "locationEnabled" to snapshot.locationEnabled,
             "alertsStatus" to snapshot.alertsStatus, "storageWarning" to snapshot.storageWarning,
             "selectedDeviceId" to selected, "discoveryActive" to (activeSearchId != null),
             "routeEnabled" to routeEnabled, "recoveredCount" to snapshot.recovered, "errorCode" to snapshot.errorCode, "diagnostic" to diagnosticDto())
     }
     private fun phoneBattery(): Int = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    private fun bluetoothEnabled(): Boolean? = try {
+        getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled
+    } catch (_: SecurityException) { null }
 
     /** Same fix-time admission as JournalAggregateReader: only a verified source fix is usable. */
     private fun gpsFixNs(sample: NormalizedGps, receipt: Receipt): Long? {
@@ -655,6 +727,8 @@ class RecorderService : Service() {
         shuttingDown = true
         rangeNotifications?.clear()
         unregisterReceiver(screenReceiver)
+        unregisterReceiver(locationModeReceiver)
+        if (bluetoothReceiverRegistered) unregisterReceiver(bluetoothReceiver)
         scope.cancel(); if (::api.isInitialized) api.shutDown(); gps.removeUpdates(locations)
         wakeLock?.let { if (it.isHeld) it.release() }
         worker.removeCallbacks(tick)

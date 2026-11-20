@@ -27,6 +27,7 @@ const codes = new Set([
   "STORAGE_ERROR",
   "NO_SESSIONS",
   "DIAGNOSTIC_ERROR",
+  "BLUETOOTH_OFF",
 ]);
 export class RecorderClientError extends Error {
   constructor(
@@ -64,6 +65,8 @@ const nullableNumber = (value: unknown) => value === null || nonnegative(value);
 const nullableDistance = (value: unknown) =>
   value === null ||
   (typeof value === "number" && Number.isFinite(value) && value >= 0);
+const nullableBoolean = (value: unknown) =>
+  value === null || typeof value === "boolean";
 
 export function decodeDiagnosticStatus(value: unknown): DiagnosticStatus {
   const fail = () => {
@@ -167,6 +170,8 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
     !nullableNumber(v.lastCommitUtcMs) ||
     typeof v.gpsStatus !== "string" ||
     !nullableDistance(v.gpsDistanceM) ||
+    !nullableBoolean(v.bluetoothEnabled) ||
+    !nullableBoolean(v.locationEnabled) ||
     typeof v.routeEnabled !== "boolean" ||
     !nonnegative(v.recoveredCount) ||
     !(
@@ -212,6 +217,8 @@ export function decodeSnapshot(value: unknown): RecorderSnapshot {
     lastCommitUtcMs: v.lastCommitUtcMs,
     gpsStatus: v.gpsStatus,
     gpsDistanceM: v.gpsDistanceM,
+    bluetoothEnabled: v.bluetoothEnabled,
+    locationEnabled: v.locationEnabled,
     routeEnabled: v.routeEnabled,
     recoveredCount: v.recoveredCount,
     errorCode: v.errorCode,
